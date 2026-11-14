@@ -4,7 +4,7 @@
 
 本仓库基于开源输入法 [喵撲 Meowpuut](https://github.com/Krysta1ll/Meowpuut) 的代码和词库（MIT 授权，提交 `aaee845`）精简而来，原项目的版权声明见 [LICENSE](LICENSE)，词库来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
-- 拼音词频混合了[白霜拼音](https://github.com/gaboolic/rime-frost)（GPL-3.0）的字频和词频，并补入它收录而原词库没有的常用词和短语。
+- 拼音词频混合了[白霜拼音](https://github.com/gaboolic/rime-frost)（GPL-3.0）的字频和词频，并补入它收录而原词库没有的常用词和短语。整句时词与词的搭配也混入了它的语法模型（zh-moqi.gram）。
 
 ## 编译
 

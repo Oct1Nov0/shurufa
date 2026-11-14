@@ -659,12 +659,24 @@ def write_pair_table(output_dir: Path, pinyin_rows, zhuyin_rows, counts_file: Pa
     for code, c in pairs.items():
         mass[code >> 20] += max(c - D, 0.0)
     alpha = [1.0 - mass[g] / context[g] if context[g] else 1.0 for g in range(n)]
+    # The n-gram model of rime-frost (gram_pairs.py): P(w|g) from a far larger corpus, mixed in.
+    import gram_pairs
+    gram, gram_rest = gram_pairs.pairs(lex) if gram_pairs.SHARE > 0 else ({}, {})
+    share = gram_pairs.SHARE
+    def mixed(g, counted, w):
+        if not gram_rest or g == START: return counted
+        return (1 - share) * counted + share * gram_rest.get(g, 1.0) * pu[w]
     values = {}
-    for code, c in pairs.items():
+    for code in set(pairs) | set(gram):
         g, w = code >> 20, code & 0xFFFFF
+        c = pairs.get(code, 0)
         p = max(c - D, 0.0) / max(context[g], 1) + alpha[g] * pu[w]
+        if code in gram: p = (1 - share) * p + share * gram[code]
+        else: p = mixed(g, p, w)
         limit = (START_END_LIMIT if g == START or w == END else PAIR_LIMIT) * STEP
         values[code] = round(max(-limit, min(limit, LAM * (math.log(p) - math.log(pu[w])) * STEP)))
+    if gram_rest:
+        alpha = [a if g == START else (1 - share) * a + share * gram_rest.get(g, 1.0) for g, a in enumerate(alpha)]
     limits = [START_END_LIMIT * STEP] + [PAIR_LIMIT * STEP] * (n - 1)
     backoff = [round(max(-limit, LAM * math.log(max(a, 1e-30)) * STEP)) for a, limit in zip(alpha, limits)]
     cap_variants(values, default_forms(lex), backoff)

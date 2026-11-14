@@ -89,4 +89,4 @@ Whole-sentence Japanese conversion uses [AzooKeyKanaKanjiConverter](https://gith
 
 ## rime-frost (白霜拼音)
 
-The pinyin weights are blended with the character and word frequencies of [rime-frost](https://github.com/gaboolic/rime-frost) (GPL-3.0), and words it lists that the lexicon lacks are added (`scripts/frost_weights.py`, `DataSources/rime-frost`). A build that contains this data is covered by the GPL-3.0 when it is passed on to others.
+The pinyin weights are blended with the character and word frequencies of [rime-frost](https://github.com/gaboolic/rime-frost) (GPL-3.0), and words it lists that the lexicon lacks are added (`scripts/frost_weights.py`, `DataSources/rime-frost`). Its n-gram model zh-moqi.gram, decoded, is mixed into the word-pair table (`scripts/gram_pairs.py`). A build that contains this data is covered by the GPL-3.0 when it is passed on to others.

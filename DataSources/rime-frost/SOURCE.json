@@ -3,9 +3,10 @@
   "repo": "https://github.com/gaboolic/rime-frost",
   "revision": "e6ebb307c6569f9bc07deb9ce94c5ab62c61311c",
   "license": "GPL-3.0",
-  "taken": "cn_dicts/8105.dict.yaml, base.dict.yaml, ext.dict.yaml: text, toneless pinyin, frequency of Han-only entries",
+  "taken": "cn_dicts/8105.dict.yaml, base.dict.yaml, ext.dict.yaml: text, toneless pinyin, frequency of Han-only entries; zh-moqi.gram decoded by scripts/decode_gram.py (grams.tsv.xz: characters, value x 10000)",
   "files": {
     "frequencies.tsv.xz": "d1ca09fcf775f94f2176c7f9d9357fdc3dece4381d847609f3a35ba8847b6eb6",
-    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "grams.tsv.xz": "9df6fef1b4b256d7f3337bc4d2d3808f4b8ae7cb0a508d14ca5668ff786c6331"
   }
 }
