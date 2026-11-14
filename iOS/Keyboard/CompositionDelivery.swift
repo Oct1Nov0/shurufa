@@ -87,6 +87,9 @@ enum SyllableBreaks {
     /// Syllable lengths covering the letters: whole syllables, the last one may
     /// be unfinished (ni h). Fewest syllables; on a tie the earlier syllable is
     /// the longer one (fang an, not fan gan). nil when the letters are not pinyin.
+    /// Whether the letters split into pinyin syllables (the last may be unfinished).
+    static func isPinyin(_ letters: String) -> Bool { !letters.isEmpty && split(letters) != nil }
+
     private static func split(_ letters: String) -> [Int]? {
         let chars = Array(letters)
         let n = chars.count

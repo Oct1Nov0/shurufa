@@ -82,3 +82,7 @@
 
 - 解碼核心（Rust，`#![forbid(unsafe_code)]`）、唯讀二進位格式 `mimo_base.bin`（`MIMO-BASE-1` / `MIMO-BIN-1`）與選詞記錄（`mimo_user_wal.log` + `mimo_user.db`）由本專案寫成，執行時不依賴第三方引擎。
 - 本專案的程式依 **MIT** 授權發佈（`LICENSE`）。詞庫裡的第三方資料都是只需保留聲明或註明出處的授權（MIT、BSD、NAIST、Apache-2.0、Unicode、CC0、CC BY）。上游各來源的版權與授權聲明完整保留。
+
+## AzooKeyKanaKanjiConverter
+
+Whole-sentence Japanese conversion uses [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) 0.11.2 (MIT, © Miwa / Ensan) with its default dictionary [azooKey_dictionary_storage](https://github.com/ensan-hcl/azooKey_dictionary_storage) (Apache-2.0). Both are fetched by Swift Package Manager at build time.

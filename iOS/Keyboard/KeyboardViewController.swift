@@ -197,6 +197,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         // the composition and candidates stay as they were.
         ui.appearanceRevision &+= 1
         ui.active = true
+        updatePaste()
         shortSince = nil
         if appliedSettingsOnLoad { appliedSettingsOnLoad = false } else { Preferences.shared.applySharedSettings() }
         let wanted = Preferences.shared.inputMode
@@ -494,6 +495,12 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
                 return Preferences.shared.simplified
             },
             delete: { [weak self] word in self?.whenReady { self?.erase(word: word) } },
+            paste: { [weak self] in
+                self?.whenReady {
+                    guard let self, let text = UIPasteboard.general.string, !text.isEmpty else { return }
+                    self.insertText(text)
+                }
+            },
             pool: { [weak self] in self?.engine.candidates() ?? [] }
         )
     }
@@ -770,8 +777,15 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         NativeBackend.releaseInactiveLexicons(keeping: engine.inputMode)
     }
 
+    /// The paste cell needs Full Access; asking whether there is text shows no system notice.
+    private func updatePaste() {
+        let can = hasFullAccess && UIPasteboard.general.hasStrings
+        if ui.canPaste != can { ui.canPaste = can }
+    }
+
     override func textDidChange(_ textInput: UITextInput?) {
         guard !delivering else { return }
+        updatePaste()
         dropStaleComposition()
         updateContext()
         refreshAppearance()
@@ -795,16 +809,32 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             hostShowsMarkedText = true
             return
         }
-        // Some hosts never report the marked text; there is nothing to compare then.
-        guard hostShowsMarkedText else { return }
         // The host reports its text a little late. Right after a key the
         // context may still be the one from before it.
-        let settled = ProcessInfo.processInfo.systemUptime - lastDeliveryTime > 0.3
-        guard !proxy.hasText || (settled && before != nil) else { return }
-        engine.clear()
-        compositionDelivery.reset()
-        setExpanded(false)
-        updateKeys()
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastDeliveryTime > 0.3 else { return }
+        let shown = compositionDelivery.shown
+        guard !shown.isEmpty else { return }
+        // A tap inside the reading can leave it in the field as plain text, the
+        // caret somewhere in it. Then the reading is let go, as it stands.
+        let head = before ?? "", tail = proxy.documentContextAfterInput ?? ""
+        let plain = shown.count > 1 && (1..<shown.count).contains { cut in
+            head.hasSuffix(shown.prefix(cut)) && tail.hasPrefix(shown.dropFirst(cut))
+        }
+        if plain {
+            engine.clear()
+            compositionDelivery.reset()
+            setExpanded(false)
+            updateKeys()
+            return
+        }
+        // Otherwise the host took the marked text away (a tap on it brings up
+        // the paste menu and removes it). The reading is still open, so it is
+        // shown again at the caret instead of waiting for the next key.
+        delivering = true
+        proxy.setMarkedText(shown, selectedRange: NSRange(location: shown.utf16.count, length: 0))
+        delivering = false
+        lastDeliveryTime = now
     }
 
     private func updateContext() {

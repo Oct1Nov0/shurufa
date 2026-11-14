@@ -20,6 +20,8 @@ final class KeyboardUIState: ObservableObject {
     /// it is closed. Set when the list opens, so cells stay put while it is used.
     @Published var kaomojiRow: [String] = []
     var kaomojiOpen: Bool { !kaomojiRow.isEmpty }
+    /// The clipboard holds text and the keyboard may read it (Full Access).
+    @Published var canPaste = false
 }
 
 /// What the candidate area can ask the controller to do.
@@ -31,6 +33,7 @@ struct KeyboardActions {
     var insertKaomoji: (String) -> Void = { _ in }
     var toggleExpanded: () -> Void = {}
     var dismiss: () -> Void = {}
+    var paste: () -> Void = {}
     var switchScript: () -> Bool = { false }
     var delete: (Bool) -> Void = { _ in }
     var pool: () -> [IndexedCandidate] = { [] }
@@ -368,7 +371,22 @@ struct CandidateRegionView: View {
                 }
             }
             Spacer(minLength: 0)
-            if fit.status != .hidden {
+            if ui.canPaste {
+                Button {
+                    KeyboardFeedback.keyDown()
+                    actions.paste()
+                } label: {
+                    Label(t("貼上", "粘贴"), systemImage: "doc.on.clipboard")
+                        .font(.system(size: size, weight: .medium))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .foregroundStyle(CandidateInk.text(dark: dark).opacity(0.8))
+                        .padding(.horizontal, 8)
+                        .frame(maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(CandidatePressStyle(tint: accent, dark: dark))
+            } else if fit.status != .hidden {
                 Text(status)
                     .font(.system(size: size, weight: .medium)).tracking(0.5)
                     .lineLimit(1)

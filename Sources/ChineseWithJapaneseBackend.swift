@@ -21,6 +21,10 @@ final class ChineseWithJapaneseBackend: InputBackend {
     // Pure-kanji words on an input that is also a Chinese reading: shown at the end of the
     // list, never in the collapsed row (owner decision 2026-11-11).
     private var lateJapanese = Set<String>()
+    /// Whole-sentence Japanese for the input (source -9), and whether it leads:
+    /// the letters read as romaji and cannot be split into pinyin syllables.
+    private var sentenceTexts = Set<String>()
+    private var japaneseLead = false
     private var englishContext = false
     private var segmentContext = ""
     /// Emoji and kaomoji of the first candidate, as listed among the choices.
@@ -58,7 +62,7 @@ final class ChineseWithJapaneseBackend: InputBackend {
         guard locked == nil, choices.indices.contains(index) else { return 0 }
         if choices[index].source == -2 { return -1 }
         if choices[index].source == -3 { return 0 }
-        if choices[index].source == 1 || choices[index].source == -1 || choices[index].source == -4 || choices[index].source == -5 || choices[index].source == -6 { return 2 }
+        if choices[index].source == 1 || choices[index].source == -1 || choices[index].source == -9 || choices[index].source == -4 || choices[index].source == -5 || choices[index].source == -6 { return 2 }
         return mode != .pinyin || exactChinese.contains(choices[index].text) ? 0 : 1
     }
     func candidates(limit: Int) -> [IndexedCandidate] {
@@ -408,6 +412,11 @@ final class ChineseWithJapaneseBackend: InputBackend {
         bareKana = japaneseReading ? [reading, reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading]
             .filter { knownJapanese[$0] == nil } : [] // はい for hai is a word, not a bare spelling
         for text in bareKana { append(text, source: -1, index: 0) }
+        japaneseLead = japaneseReading && !SyllableBreaks.isPinyin(raw.lowercased().filter { $0 != "'" })
+        let sentences = japaneseReading ? JapaneseSentences.convert(reading, limit: japaneseLead ? 8 : 3) : []
+        if sentences.isEmpty { japaneseLead = false }
+        sentenceTexts = Set(sentences)
+        for text in sentences { append(text, source: -9, index: 0) }
         // Short letters as typed (ok, ai). Zhuyin raw input is key codes (sc for ㄋㄏ), never offered.
         if pinyinFirst && raw.count <= 3 && raw.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) }) {
             append(raw, source: -4, index: 0)
@@ -427,11 +436,16 @@ final class ChineseWithJapaneseBackend: InputBackend {
         var japaneseTexts = choices.filter { $0.source == 1 }.map(\.text) + bareKana
         if let mixed { japaneseTexts.append(mixed) }
         if let mixedPrefix { japaneseTexts.append(mixedPrefix.text) }
+        japaneseTexts += sentences
+        if japaneseLead { state.literalCandidate = false }
         state.japaneseCandidates = Array(Set(japaneseTexts)).filter { !exactChinese.contains($0) }
         let strongTexts = Set(state.confidentCandidates)
         let remembered = Set(personalCandidates)
         func tier(_ choice: Choice) -> Int {
-            if choice.source == -2 { return 0 }
+            // Romaji that is not pinyin: the Japanese sentences lead, the letters as typed follow the words.
+            if japaneseLead, sentenceTexts.contains(choice.text) { return 0 }
+            if choice.source == -2 { return japaneseLead ? 3 : 0 }
+            if choice.source == -9 { return 4 }
             if remembered.contains(choice.text) && strongTexts.isEmpty { return 1 }
             if strongTexts.contains(choice.text) { return 2 }
             // End of the list in pinyin: Chinese candidates (tier 3, with reviewed Japanese words),
@@ -447,6 +461,12 @@ final class ChineseWithJapaneseBackend: InputBackend {
             let a = tier($0.element), b = tier($1.element)
             return a == b ? $0.offset < $1.offset : a < b
         }.map(\.element)
+        // Letters that are both pinyin and romaji: Chinese leads, and the best Japanese
+        // sentence of three kana or more comes right behind the first candidate.
+        if !japaneseLead, reading.count >= 3, let best = sentences.first,
+           let index = choices.firstIndex(where: { $0.text == best }), index > 1 {
+            choices.insert(choices.remove(at: index), at: 1)
+        }
         if pinyinFirst, !literal, dictionary.isEmpty, personalCandidates.isEmpty,
            let mixed, let native = engines[0] as? NativeBackend,
            chinese.allSatisfy({ $0.text.count == 1 && native.consumedInputBytes($0.index) < raw.utf8.count }),

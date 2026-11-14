@@ -27,8 +27,21 @@ enum Romaji {
     }()
 
     /// `editing` is the reading shown while it is typed: a trailing n stays a
-    /// letter until the next key says what it is (na な, nn ん, nk んk), and nn
-    /// before a consonant is one ん.
+    /// letter until the next key says what it is (na な, nn ん, nk んk).
+    /// The same letters with every nn written n', which is how the word list spells ん.
+    static func strict(_ raw: String) -> String {
+        let input = Array(raw)
+        var out = "", position = 0
+        while position < input.count {
+            let key = input[position]
+            if key == "n" || key == "N", position + 1 < input.count, input[position + 1] == "n" || input[position + 1] == "N" {
+                out += "n'"; position += 2
+            } else {
+                out.append(key); position += 1
+            }
+        }
+        return out
+    }
     static func reading(_ raw: String, editing: Bool = false) -> String {
         let input = Array(raw.lowercased())
         var result = "", position = 0
@@ -41,11 +54,8 @@ enum Romaji {
                 if next == "'" { result += "ん"; position += 2; continue }
                 if next == nil { result += editing ? "n" : "ん"; position += 1; continue }
                 if next == "n" {
-                    result += "ん"
-                    let following: Character? = position + 2 < input.count ? input[position + 2] : nil
-                    let closed = following == nil || (editing && !"aiueoy'".contains(following!))
-                    position += closed ? 2 : 1
-                    continue
+                    // As on a Japanese keyboard: nn is ん, whatever follows (shinni しんい, konnnichiha こんにちは).
+                    result += "ん"; position += 2; continue
                 }
                 if let next, !"aiueoy".contains(next) { result += "ん"; position += 1; continue }
             }
@@ -87,7 +97,17 @@ enum JapaneseLexicon {
     // One query, used on the main thread only, like the session.
     private static let query = mpn_japanese_query_create()
 
+    /// Words for the letters read the strict way (nn is ん), then for the loose
+    /// reading the list also knows (konnichiha), without repeats.
     static func words(_ input: String, mode: Int32, limit: Int) -> [Word] {
+        let strict = Romaji.strict(input)
+        var result = lookup(strict, mode: mode, limit: limit)
+        if strict != input {
+            for word in lookup(input, mode: mode, limit: limit) where !result.contains(where: { $0.text == word.text }) { result.append(word) }
+        }
+        return Array(result.prefix(limit))
+    }
+    private static func lookup(_ input: String, mode: Int32, limit: Int) -> [Word] {
         guard let handle = shared, let query, !input.isEmpty else { return [] }
         let count = mpn_japanese_lookup(query, handle, input, mode, limit)
         return (0..<count).compactMap { index in
@@ -164,6 +184,11 @@ final class JapaneseBackend: InputBackend {
         let reading = shown.hasSuffix("n") ? String(shown.dropLast()) + "ん" : shown
         choices = JapaneseLexicon.words(raw, mode: pinyinSide ? JapaneseLexicon.pinyinMode : JapaneseLexicon.japaneseMode,
                                         limit: pinyinSide ? 5 : 64).map(\.text)
+        // Japanese mode: whole sentences first, then the words of the list.
+        if !pinyinSide {
+            let sentences = JapaneseSentences.convert(reading, limit: 12)
+            choices = sentences + choices.filter { !sentences.contains($0) }
+        }
         let katakana = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
         for text in [reading, katakana] where !choices.contains(text) { choices.append(text) }
         if raw == raw.uppercased(), raw != raw.lowercased() { choices.removeAll(where: { $0 == katakana }); choices.insert(katakana, at: 0) }
