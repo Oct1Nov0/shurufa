@@ -479,6 +479,13 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
                 guard let self else { return }
                 self.setExpanded(!self.ui.expanded)
             },
+            dismiss: { [weak self] in
+                guard let self else { return }
+                self.engine.finishComposition(); self.deliver()
+                #if !KEYBOARD_LAB
+                self.dismissKeyboard()
+                #endif
+            },
             switchScript: { [weak self] in
                 // Switches script in place; the current reading is
                 // kept and its candidates are rebuilt in the new script.

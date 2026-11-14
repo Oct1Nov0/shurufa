@@ -30,6 +30,7 @@ struct KeyboardActions {
     var insertSymbol: (String) -> Void = { _ in }
     var insertKaomoji: (String) -> Void = { _ in }
     var toggleExpanded: () -> Void = {}
+    var dismiss: () -> Void = {}
     var switchScript: () -> Bool = { false }
     var delete: (Bool) -> Void = { _ in }
     var pool: () -> [IndexedCandidate] = { [] }
@@ -382,23 +383,26 @@ struct CandidateRegionView: View {
         }
     }
 
+    /// The key at the right end: with candidates (or the kaomoji list) it opens
+    /// and closes the panel; with nothing to show it puts the keyboard away.
     private func chevron(_ layout: CandidateRegionLayout) -> some View {
-        Button {
+        let expands = hasCandidates || ui.kaomojiOpen || ui.expanded
+        return Button {
             KeyboardFeedback.keyDown()
-            actions.toggleExpanded()
+            if expands { actions.toggleExpanded() } else { actions.dismiss() }
         } label: {
-            Image(systemName: "chevron.down")
+            Image(systemName: expands ? "chevron.down" : "keyboard.chevron.compact.down")
                 .font(.system(size: 15, weight: .semibold))
                 .rotationEffect(.degrees(ui.expanded ? 180 : 0))
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: ui.expanded)
-                .foregroundStyle(CandidateInk.text(dark: dark).opacity(hasCandidates || ui.kaomojiOpen || ui.expanded ? 0.85 : 0.25))
+                .foregroundStyle(CandidateInk.text(dark: dark).opacity(0.85))
                 .frame(width: layout.chevron.width, height: layout.chevron.height)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!hasCandidates && !ui.kaomojiOpen && !ui.expanded)
         .position(x: layout.chevron.midX, y: layout.chevron.midY)
-        .accessibilityLabel(ui.kaomojiOpen && !composing ? (ui.expanded ? t("收合顏文字", "收起颜文字") : t("展開顏文字", "展开颜文字"))
+        .accessibilityLabel(!expands ? t("收起鍵盤", "收起键盘")
+                            : ui.kaomojiOpen && !composing ? (ui.expanded ? t("收合顏文字", "收起颜文字") : t("展開顏文字", "展开颜文字"))
                             : (ui.expanded ? t("收合候選詞", "收起候选词") : t("展開候選詞", "展开候选词")))
     }
 }

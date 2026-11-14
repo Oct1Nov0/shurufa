@@ -21,7 +21,7 @@ struct Snapshot: Decodable, Equatable {
     var japaneseCandidates: [String] = []
     var compactJapanese: IndexedCandidate? = nil
     var preferredCompleteMixed: String? = nil
-    /// The hiragana and katakana of a one-kana reading, kept second and third in the row.
+    /// The hiragana and katakana of a romaji reading, kept second and third in the row.
     var pinnedKana: [String] = []
     var compactIndices: [Int] {
         let japanese = Set(japaneseCandidates)
@@ -214,23 +214,23 @@ final class Engine: ObservableObject {
         }
         snapshot.commit = committed
     }
-    /// The hiragana and katakana of the input when it is one kana (a あ, ka か, kya きゃ, xa ぁ).
+    /// The hiragana and katakana of the input when all of it reads as romaji (a あ, sushi すし, xa ぁ).
     private func oneKana() -> [String] {
         guard !english, inputMode == .pinyin || inputMode == .japanese else { return [] }
         let letters = snapshot.input.lowercased()
-        guard !letters.isEmpty, letters.count <= 4, letters.allSatisfy({ $0.isASCII && $0.isLetter }) else { return [] }
+        guard !letters.isEmpty, letters.count <= 64, letters.allSatisfy({ $0.isASCII && ($0.isLetter || $0 == "-" || $0 == "'") }) else { return [] }
         let hiragana = Romaji.reading(letters)
         let scalars = Array(hiragana.unicodeScalars)
-        guard scalars.allSatisfy({ (0x3041...0x3096).contains($0.value) }) else { return [] }
-        let small = Array("ぁぃぅぇぉゃゅょゎ".unicodeScalars)
-        guard scalars.count == 1 || (scalars.count == 2 && small.contains(scalars[1])) else { return [] }
+        // Anything left as a letter means the input is not romaji.
+        guard !scalars.isEmpty, scalars.allSatisfy({ (0x3041...0x3096).contains($0.value) || $0.value == 0x30fc }),
+              scalars.contains(where: { $0.value != 0x30fc }) else { return [] }
         let katakana = hiragana.applyingTransform(.hiraganaToKatakana, reverse: false) ?? hiragana
         return hiragana == katakana ? [hiragana] : [hiragana, katakana]
     }
     /// The first page as this user wants it. Every word starts with the rank the
     /// lexicon gives it; each time a word is picked for a reading its count for
     /// that reading goes up by one, and picked words lead the row, most picked
-    /// first (the latest pick first among equals). The kana of a one-kana reading
+    /// first (the latest pick first among equals). The kana of a romaji reading
     /// then take the second and third places.
     private func personalise() {
         snapshot.pinnedKana = []
