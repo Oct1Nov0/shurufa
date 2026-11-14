@@ -33,9 +33,9 @@ struct KeyboardActions {
     var insertKaomoji: (String) -> Void = { _ in }
     var toggleExpanded: () -> Void = {}
     var dismiss: () -> Void = {}
-    var paste: () -> Void = {}
     var switchScript: () -> Bool = { false }
     var delete: (Bool) -> Void = { _ in }
+    var paste: () -> Void = {}
     var pool: () -> [IndexedCandidate] = { [] }
 }
 
