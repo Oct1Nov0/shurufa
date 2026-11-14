@@ -2,13 +2,7 @@
 
 自用的 iOS / iPadOS 键盘。拼音输入简体中文，拼音里可以直接夹打日语词。
 
-本仓库基于开源输入法 [喵撲 Meowpuut](https://github.com/Krysta1ll/Meowpuut) 的代码和词库（MIT 授权，提交 `aaee845`）精简而来，原项目的版权声明见 [LICENSE](LICENSE)，词库来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。原项目的猫咪图像、图标和节日素材不在本仓库内。
-
-## 和原项目的区别
-
-- 只保留 iOS 键盘和 Rust 引擎，没有 Mac、Android、Windows 客户端。
-- 没有液态玻璃、皮肤、猫、节日装扮和设置页。按键是实色的，候选栏是纯色的。
-- 默认拼音、简体。
+本仓库基于开源输入法 [喵撲 Meowpuut](https://github.com/Krysta1ll/Meowpuut) 的代码和词库（MIT 授权，提交 `aaee845`）精简而来，原项目的版权声明见 [LICENSE](LICENSE)，词库来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
 ## 编译
 
