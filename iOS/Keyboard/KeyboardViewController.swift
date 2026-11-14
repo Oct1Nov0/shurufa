@@ -30,7 +30,7 @@ struct KeyboardRootView: View {
         ZStack(alignment: .top) {
             KeyboardBackground(dark: ui.dark, glass: ui.region.glass.offsetBy(dx: ui.sideInset, dy: 0))
             VStack(spacing: 0) {
-                ReadingRow(ui: ui)
+                ReadingRow(ui: ui, onCaret: actions.readingCaret, onEnd: actions.readingCaretEnd)
                     .frame(height: ui.readingHeight)
                 CandidateRegionView(engine: engine, ui: ui, actions: actions)
                     .frame(height: ui.region.height)
@@ -109,6 +109,8 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     private var heldPrefix = ""
     /// Space is moving the caret inside the reading, not in the host's text.
     private var readingCursor = false
+    /// A finger is on the reading line.
+    private var readingDrag = false
     /// The word the shown suggestions are for; the same word is not checked twice.
     private var checkedWord: String?
     /// The last insertion was a tapped suggestion and its space.
@@ -509,6 +511,17 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
                     self.insertText(text)
                 }
             },
+            readingCaret: { [weak self] index in
+                guard let self, self.engine.canEditReading else { return }
+                self.readingDrag = true
+                self.engine.setCaret(index)
+                self.updateReading()
+            },
+            readingCaretEnd: { [weak self] in
+                guard let self, self.readingDrag else { return }
+                self.readingDrag = false
+                self.updateReading()
+            },
             pool: { [weak self] in self?.engine.candidates() ?? [] }
         )
     }
@@ -819,13 +832,16 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         guard composing || !heldPrefix.isEmpty else {
             if !ui.reading.isEmpty { ui.reading = "" }
             if ui.readingCaret != nil { ui.readingCaret = nil }
+            if !ui.readingRaw.isEmpty { ui.readingRaw = "" }
+            if ui.readingEditable { ui.readingEditable = false }
+            readingDrag = false
             return
         }
         var body: String
         var caret: Int
-        if let at = engine.caret {
+        if engine.caret != nil || readingDrag {
             body = engine.snapshot.input
-            caret = min(at, body.count)
+            caret = min(engine.caret ?? body.count, body.count)
         } else {
             body = engine.snapshot.preedit
             if !engine.english, engine.moduleBuffer == nil {
@@ -834,6 +850,10 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             }
             caret = body.count
         }
+        let raw = heldPrefix + engine.snapshot.input
+        if ui.readingRaw != raw { ui.readingRaw = raw }
+        if ui.readingPrefixCount != heldPrefix.count { ui.readingPrefixCount = heldPrefix.count }
+        if ui.readingEditable != engine.canEditReading { ui.readingEditable = engine.canEditReading }
         let text = heldPrefix + body
         if ui.reading != text { ui.reading = text }
         if ui.readingCaret != heldPrefix.count + caret { ui.readingCaret = heldPrefix.count + caret }

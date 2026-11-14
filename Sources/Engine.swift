@@ -169,6 +169,10 @@ final class Engine: ObservableObject {
     var pendingChoices: [(reading: String, text: String)] = []
     /// Where the next letter goes in the reading (`snapshot.input`); nil is the end.
     @Published var caret: Int?
+    /// The words chosen one after another for the reading now open, and what
+    /// they wrote: a reading finished in two or more choices is learnt whole.
+    var compositionChoices: [(reading: String, text: String)] = []
+    var compositionCommit = ""
     @Published var browsing = false
     @Published var phrasesOnly = false
     @Published var browseCount = 0
@@ -378,6 +382,11 @@ final class Engine: ObservableObject {
         let newCommit = snapshot.commit
         snapshot.commit = pendingCommit + newCommit
         if let at = caret, at >= snapshot.input.count || snapshot.preedit.isEmpty { caret = nil }
+        if !newCommit.isEmpty { compositionCommit += newCommit }
+        if snapshot.preedit.isEmpty {
+            if !compositionCommit.isEmpty { learnPhrase() }
+            compositionChoices = []; compositionCommit = ""
+        }
         if !newCommit.isEmpty {
             if pendingChoices.isEmpty { learningTail = nil }
             learn(pendingChoices)
@@ -435,6 +444,35 @@ final class Engine: ObservableObject {
         let next = Array(merged.prefix(limit))
         if predictions != next { predictions = next }
     }
+    /// Remembers a reading typed in pieces (huo de | ti tou | you | qing ying) as
+    /// one phrase, for its full letters and, in pinyin, for its initials (hdttyqy).
+    private func learnPhrase() {
+        guard compositionChoices.count >= 2, Preferences.shared.rememberChoices else { return }
+        let phrase = compositionChoices.map(\.text).joined()
+        guard phrase == compositionCommit, (2...20).contains(phrase.count) else { return }
+        let key = compositionChoices[0].reading
+        var records = [(reading: key, text: phrase)]
+        if key.hasPrefix("py:"), key.count > 5 {
+            let script = String(key.dropFirst(3).prefix(2))
+            if let short = Self.initials(of: String(key.dropFirst(5))) { records.append(("py:" + script + short, phrase)) }
+        }
+        ChoiceMemory.shared.remember(records)
+    }
+    /// The first letter of each pinyin syllable, or nil when the letters are not
+    /// whole pinyin syllables.
+    static func initials(of letters: String) -> String? {
+        guard letters.count >= 4, letters.allSatisfy({ $0.isASCII && $0.isLowercase }) else { return nil }
+        let syllables = SyllableBreaks.pinyin(letters).split(separator: "\u{2006}")
+        guard syllables.count >= 2, syllables.joined() == letters else { return nil }
+        let short = syllables.compactMap(\.first).map(String.init).joined()
+        return short == letters ? nil : short
+    }
+    /// Puts the caret before the letter at `index` of the reading (its length is the end).
+    func setCaret(_ index: Int) {
+        guard canEditReading else { return }
+        let count = snapshot.input.count
+        caret = index >= count ? nil : max(0, index)
+    }
     func takeCommit() -> String { let text = snapshot.commit; snapshot.commit = ""; return text }
     /// A reading of letters is open and can be edited inside (pinyin, Japanese).
     var canEditReading: Bool {
@@ -481,6 +519,7 @@ final class Engine: ObservableObject {
         candidateOrder = []
         pendingChoices = []
         caret = nil
+        compositionChoices = []; compositionCommit = ""
         browsing = false; pool = []
     }
     func modeChanged() {

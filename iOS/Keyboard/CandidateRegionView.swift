@@ -24,6 +24,10 @@ final class KeyboardUIState: ObservableObject {
     @Published var reading = ""
     @Published var readingCaret: Int?
     @Published var readingHeight: CGFloat = 22
+    /// The chosen words and the letters as typed, for placing the caret by touch.
+    @Published var readingRaw = ""
+    @Published var readingPrefixCount = 0
+    @Published var readingEditable = false
     /// The clipboard holds text and the keyboard may read it (Full Access).
     @Published var canPaste = false
 }
@@ -40,6 +44,8 @@ struct KeyboardActions {
     var switchScript: () -> Bool = { false }
     var delete: (Bool) -> Void = { _ in }
     var paste: () -> Void = {}
+    var readingCaret: (Int) -> Void = { _ in }
+    var readingCaretEnd: () -> Void = {}
     var pool: () -> [IndexedCandidate] = { [] }
 }
 

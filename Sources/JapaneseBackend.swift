@@ -189,6 +189,9 @@ final class JapaneseBackend: InputBackend {
         if !pinyinSide {
             let sentences = JapaneseSentences.convert(reading, limit: 12)
             choices = sentences + choices.filter { !sentences.contains($0) }
+            // Phrases learnt for these letters come first.
+            let learnt = ChoiceMemory.shared.personalCandidates(for: "ja:" + raw)
+            choices = learnt + choices.filter { !learnt.contains($0) }
         }
         let katakana = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
         for text in [reading, katakana] where !choices.contains(text) { choices.append(text) }

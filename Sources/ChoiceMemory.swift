@@ -162,7 +162,10 @@ final class ChoiceMemory: ObservableObject {
     }
     func personalCandidates(for reading: String) -> [String] {
         guard Preferences.shared.rememberChoices else { return [] }
-        return (records[reading] ?? []).filter { $0.uses >= 2 && $0.text.count <= 8 && $0.text.unicodeScalars.allSatisfy { (0x3400...0x9fff).contains($0.value) } }.sorted(by: Self.rank).map(\.text)
+        // Words and learnt phrases: Han characters and kana, picked once or more.
+        return (records[reading] ?? []).filter { $0.text.count <= 20 && $0.text.unicodeScalars.allSatisfy {
+            (0x3400...0x9fff).contains($0.value) || (0x20000...0x323af).contains($0.value) || (0x3041...0x30ff).contains($0.value)
+        } }.sorted(by: Self.rank).map(\.text)
     }
     func contextualPredictions(after context: String, limit: Int = 4) -> [String] {
         guard Preferences.shared.rememberChoices, !context.isEmpty, limit > 0 else { return [] }

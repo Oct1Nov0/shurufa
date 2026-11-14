@@ -206,6 +206,7 @@ extension Engine {
         caret = nil
         guard backend?.choose(index) == true else { error = Preferences.shared.simplified ? "没有选到这个词，请再试一次。" : "沒有選到這個詞，請再試一次。"; refresh(); return }
         if !pendingChoices.contains(where: { $0.reading == reading && $0.text == text }) { pendingChoices.append((reading, text)) }
+        compositionChoices.append((reading, text))
         refresh()
         if snapshot.commit.isEmpty && snapshot.candidates.isEmpty && !snapshot.preedit.isEmpty {
             backend?.commit(); refresh()
