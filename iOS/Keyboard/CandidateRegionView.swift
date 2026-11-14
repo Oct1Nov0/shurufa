@@ -149,8 +149,16 @@ struct CandidateRegionView: View {
         }
         .frame(width: layout.width, height: layout.height, alignment: .topLeading)
         // The rest of the pool belongs to one reading in one script.
-        .onChange(of: engine.snapshot.input) { _, _ in resetExtra() }
-        .onChange(of: preferences.simplified) { _, _ in resetExtra() }
+        // The rest of the pool is loaded with each new set of candidates, not when
+        // the row is scrolled to its end: a wide iPad row shows them at once.
+        .onChange(of: engine.snapshot.candidates) { _, _ in reloadExtra() }
+        .onChange(of: preferences.simplified) { _, _ in reloadExtra() }
+        .onAppear { reloadExtra() }
+    }
+
+    private func reloadExtra() {
+        resetExtra()
+        loadMore()
     }
 
     private func resetExtra() {
@@ -322,7 +330,7 @@ struct CandidateRegionView: View {
         guard !extraLoaded, composing else { return }
         extraLoaded = true
         let shown = Set(engine.candidateOrder + (engine.snapshot.compactJapanese.map { [$0.index] } ?? []))
-        extra = actions.pool().filter { !shown.contains($0.index) }
+        extra = Array(actions.pool().filter { !shown.contains($0.index) }.prefix(80))
     }
 
     private var idleStatus: String {
