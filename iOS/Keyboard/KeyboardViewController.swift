@@ -116,17 +116,6 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     private var observers = Set<AnyCancellable>()
     private var keySetContext: KeyboardKeyContext?
     private var keySet: KeyboardKeySet?
-    /// The day the cats' arrangement is for. It is read when the keyboard
-    /// appears, so the cats never move while someone is typing.
-    private var catDay = CatSchedule.day()
-    private struct CatInputs: Equatable {
-        var region: CandidateRegionLayout
-        var shape: GlassShape
-        var setting: String
-        var day: Int
-        var festival: String?
-    }
-    private var catInputs: CatInputs?
     private var t: InterfaceText { InterfaceText(simplified: Preferences.shared.simplified) }
 
     #if KEYBOARD_LAB
@@ -187,9 +176,6 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
                 .sink { [weak self] _ in self?.relayout() }
                 .store(in: &observers)
         }
-        NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
-            .sink { [weak self] _ in DispatchQueue.main.async { self?.checkFestivalDay() } }
-            .store(in: &observers)
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitVerticalSizeClass.self,
                                  UITraitHorizontalSizeClass.self, UITraitUserInterfaceIdiom.self]) {
             (controller: KeyboardViewController, _: UITraitCollection) in
@@ -211,11 +197,6 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         // the composition and candidates stay as they were.
         ui.appearanceRevision &+= 1
         ui.active = true
-        catDay = CatSchedule.day()
-        #if KEYBOARD_LAB
-        // `-catDay <n>` shows the arrangement of another day.
-        if let day = UserDefaults.standard.string(forKey: "catDay").flatMap({ Int($0) }) { catDay = day }
-        #endif
         shortSince = nil
         if appliedSettingsOnLoad { appliedSettingsOnLoad = false } else { Preferences.shared.applySharedSettings() }
         let wanted = Preferences.shared.inputMode
@@ -334,7 +315,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         if keysView.frame != keysFrame { keysView.frame = keysFrame }
         keysView.touchOutset = max(left, right)
         let rim = CandidateGlassShape.contentBand(prefs.glassShape, height: 1).top
-        var region = CandidateRegionLayout(width: width, idiom: idiom, cats: prefs.catGlassSkin, rim: rim)
+        var region = CandidateRegionLayout(width: width, idiom: idiom, rim: rim)
         let keySet = currentKeySet()
         // One height per input mode: Zhuyin's four rows of keys set it for its
         // symbol pages too, so switching pages never makes the keyboard jump.
@@ -358,9 +339,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             if now - (shortSince ?? now) >= 0.25 {
                 if idiom == .phone {
                     idiom = .phoneLandscape
-                    region = CandidateRegionLayout(width: width, idiom: idiom, cats: prefs.catGlassSkin, rim: rim)
-                } else if idiom == .phoneLandscape {
-                    region = CandidateRegionLayout(width: width, idiom: idiom, cats: false, rim: rim)
+                    region = CandidateRegionLayout(width: width, idiom: idiom, rim: rim)
                 }
                 area = max(1, room - region.height)
             }
@@ -375,7 +354,6 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         metrics.bottomPadding += max(0, area - metrics.areaHeight(rows: keySet.rowCount))
         if ui.region != region { ui.region = region }
         if ui.keysAreaHeight != area { ui.keysAreaHeight = area }
-        placeCats(region)
         let theme = KeyboardKeyTheme(dark: ui.dark, highContrast: UIAccessibility.isDarkerSystemColorsEnabled,
                                      palette: prefs.candidatePalette, bold: UIAccessibility.isBoldTextEnabled,
                                      opaque: true, liquid: false)
@@ -384,27 +362,6 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     }
 
     private func updateKeys() { relayout() }
-
-    /// Today's arrangement on this bar, worked out again only when the bar,
-    /// the shape, the setting or the day changes.
-    private func placeCats(_ region: CandidateRegionLayout) {
-        let prefs = Preferences.shared
-        let theme = ui.festival
-        let inputs = CatInputs(region: region, shape: prefs.glassShape, setting: prefs.catPlacement, day: catDay, festival: theme?.id)
-        guard inputs != catInputs else { return }
-        catInputs = inputs
-        let stage = region.stage(shape: inputs.shape)
-        // On a festival day the dressed pair sits at the two ends; where that
-        // does not fit, the everyday cats keep their place of the day.
-        let dressed = theme.flatMap { theme in
-            CatSchedule.arrangement(setting: "ends", day: catDay, on: stage, sprite: { cat, pose in
-                theme.catSprite(cat) ?? CatArt.sprite(cat, pose)
-            }).flatMap { $0.arrangement.id == "ends" ? $0.places : nil }
-        }
-        let places = region.cats
-            ? dressed ?? CatSchedule.arrangement(setting: inputs.setting, day: catDay, on: stage)?.places ?? [] : []
-        if ui.cats != places { ui.cats = places }
-    }
 
     /// The keys for the current state. Most keystrokes change nothing here,
     /// so the last set is kept and compared by its inputs.
@@ -430,24 +387,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         case .dark: true
         }
         if ui.dark != dark { ui.dark = dark }
-        // The theme changes only between words (checkFestivalDay).
-        if engine.snapshot.preedit.isEmpty {
-            festivalDay = Festivals.day(Date())
-            let festival = KeyboardFestival.today()
-            if ui.festival != festival { ui.festival = festival }
-        }
         relayout()
-    }
-
-    /// The day the festival theme was last looked up for.
-    private var festivalDay = ""
-
-    /// A keyboard left up past midnight takes the new day's theme: checked
-    /// when the day changes and after each change to the text, and swapped
-    /// only between words, never while a reading is being composed.
-    private func checkFestivalDay() {
-        guard engine.snapshot.preedit.isEmpty, Festivals.day(Date()) != festivalDay else { return }
-        refreshAppearance()
     }
 
     private func setExpanded(_ expanded: Bool) {
@@ -462,9 +402,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             keysView.isHidden = true
         } else {
             keysView.isHidden = false
-            // Glass under a fading parent is drawn wrong: glass keys come back at once.
-            if LiquidGlass.available { return }
-            keysView.alpha = 0
+                keysView.alpha = 0
             // The keys take touches while they fade in.
             UIView.animate(withDuration: motion ? 0.18 : 0, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
                 self.keysView.alpha = 1
@@ -542,7 +480,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
                 self.setExpanded(!self.ui.expanded)
             },
             switchScript: { [weak self] in
-                // Petting 莫莫 switches script in place; the current reading is
+                // Switches script in place; the current reading is
                 // kept and its candidates are rebuilt in the new script.
                 Preferences.shared.simplified.toggle()
                 if let self { self.engine.modeChanged(); self.deliver(); self.updateKeys() }
@@ -986,7 +924,6 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     var labPage: Int { page }
     var labExpanded: Bool { ui.expanded }
     var labRegion: CandidateRegionLayout { ui.region }
-    var labCats: [CatPlacement] { ui.cats }
     #endif
 
     // MARK: Labels

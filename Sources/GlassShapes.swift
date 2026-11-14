@@ -167,17 +167,14 @@ enum CandidateInk {
 }
 
 /// The selected candidate's rose capsule with a hairline of light on top.
-/// With Increase Contrast it is the palette's deep tone. During a holiday
-/// the outfit may bring its own colour (docs/FESTIVALS.md).
+/// With Increase Contrast it is the palette's deep tone.
 struct CandidatePill: View {
     var palette: CandidatePalette
     var dark: Bool
     var highContrast = false
-    var festival: Color? = nil
 
     private var colors: (top: Color, bottom: Color) {
         if highContrast { return (palette.contrastPill, palette.contrastPill) }
-        if let festival { return (festival.opacity(0.86), festival) }
         return palette.pill(dark: dark)
     }
 

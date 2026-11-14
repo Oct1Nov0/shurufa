@@ -12,8 +12,10 @@ enum CandidateStripLayout {
     /// With `promote` false it stays where it is ranked (a kana spelling
     /// that is not a word should not push a Chinese candidate out of view).
     static func order(widths: [CGFloat], japanese: Set<Int>, available: CGFloat, spacing: CGFloat,
-                      pinnedFirst: Int? = nil, promote: Bool = true) -> [Int] {
+                      pinnedFirst: Int? = nil, promote: Bool = true, keepAll: Bool = false) -> [Int] {
         guard !widths.isEmpty else { return [] }
+        // Pinned kana: the row is already in its final order, and no Japanese cell is dropped.
+        if keepAll { return Array(widths.indices) }
         let firstJapanese = pinnedFirst ?? widths.indices.first { japanese.contains($0) }
         var indices = widths.indices.filter { !japanese.contains($0) || $0 == firstJapanese }
         if let pinnedFirst, let at = indices.firstIndex(of: pinnedFirst), at != 0 {
@@ -58,12 +60,12 @@ enum CandidateStripLayout {
     /// The collapsed row for a list of candidates: ranked order, at most one
     /// Japanese candidate (`japanese` holds their indices), every width
     /// measured and capped at `maximum`.
-    static func cells(texts: [String], japanese: Set<Int>, pinnedFirst: Int? = nil, promoteJapanese: Bool = true,
+    static func cells(texts: [String], japanese: Set<Int>, pinnedFirst: Int? = nil, promoteJapanese: Bool = true, keepAll: Bool = false,
                       available: CGFloat, maximum: CGFloat, paw: CGFloat, measure: (String) -> CGFloat) -> [Cell] {
         let natural = texts.indices.map { naturalWidth(text: measure(texts[$0]), japanese: japanese.contains($0), paw: paw) }
         let widths = natural.map { min(maximum, $0) }
         return order(widths: widths, japanese: japanese, available: available, spacing: spacing, pinnedFirst: pinnedFirst,
-                     promote: promoteJapanese).map {
+                     promote: promoteJapanese, keepAll: keepAll).map {
             Cell(index: $0, text: texts[$0], japanese: japanese.contains($0), width: widths[$0], shortened: natural[$0] > maximum)
         }
     }

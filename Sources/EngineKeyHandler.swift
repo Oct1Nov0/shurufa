@@ -105,7 +105,7 @@ extension Engine {
             return true
         }
         if moduleBuffer == nil, !snapshot.candidates.isEmpty {
-            if inputMode == .pinyin, code == 32, modifiers == 0 {
+            if inputMode == .pinyin || inputMode == .japanese, code == 32, modifiers == 0 {
                 choose(snapshot.highlighted)
                 return true
             }
@@ -123,7 +123,9 @@ extension Engine {
                 // Japanese: Return keeps the kana as typed (の for no), as Apple's
                 // Romaji keyboard does; Space or a moved highlight converts.
                 if inputMode == .japanese, snapshot.highlighted == 0, !snapshot.preedit.isEmpty {
-                    let reading = snapshot.preedit.replacingOccurrences(of: " ", with: "")
+                    var reading = snapshot.preedit.replacingOccurrences(of: " ", with: "")
+                    // A waiting n is ん once the reading is taken.
+                    if reading.hasSuffix("n") { reading = String(reading.dropLast()) + "ん" }
                     clear(); snapshot.commit = reading
                     return true
                 }

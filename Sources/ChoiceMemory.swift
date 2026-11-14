@@ -150,6 +150,16 @@ final class ChoiceMemory: ObservableObject {
         let contextual = context.flatMap { records["ctx|" + $0 + "|" + reading]?.first(where: { $0.text == text })?.uses } ?? 0
         return min(12, uses) * 700 + (contextual >= 2 ? min(4, contextual) * 1200 : 0)
     }
+    /// Every text picked for this reading, with how often and when.
+    func usage(for reading: String) -> [String: RememberedChoice] {
+        guard Preferences.shared.rememberChoices else { return [:] }
+        return Dictionary((records[reading] ?? []).map { ($0.text, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+    /// Texts picked at least twice for this reading right after `context`.
+    func contextual(for reading: String, after context: String?) -> Set<String> {
+        guard Preferences.shared.rememberChoices, let context else { return [] }
+        return Set((records["ctx|" + context + "|" + reading] ?? []).filter { $0.uses >= 2 }.map(\.text))
+    }
     func personalCandidates(for reading: String) -> [String] {
         guard Preferences.shared.rememberChoices else { return [] }
         return (records[reading] ?? []).filter { $0.uses >= 2 && $0.text.count <= 8 && $0.text.unicodeScalars.allSatisfy { (0x3400...0x9fff).contains($0.value) } }.sorted(by: Self.rank).map(\.text)

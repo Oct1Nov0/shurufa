@@ -184,7 +184,7 @@ struct ExpandedCandidatesView: View {
             pool = actions.pool()
             if filter == .symbols, !pool.contains(where: isSymbol) { filter = .all }
         }
-        // 莫莫 can switch the script while the reading stays: the pool is rebuilt.
+        // The script can change while the reading stays: the pool is rebuilt.
         .onChange(of: preferences.simplified) { _, _ in pool = actions.pool() }
         .onDisappear { deleter?.stop() }
     }
@@ -241,8 +241,7 @@ struct ExpandedCandidatesView: View {
             .frame(maxWidth: .infinity, minHeight: 44)
             .background {
                 if entry.selected {
-                    CandidatePill(palette: preferences.candidatePalette, dark: dark, highContrast: contrast == .increased,
-                                  festival: ui.festival?.pill(dark: ui.dark))
+                    CandidatePill(palette: preferences.candidatePalette, dark: dark, highContrast: contrast == .increased)
                         .padding(.vertical, 5).padding(.horizontal, 2)
                 }
             }

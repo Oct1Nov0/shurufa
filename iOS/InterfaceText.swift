@@ -1,7 +1,7 @@
 import Foundation
 
 // Interface text in both Chinese scripts. The keyboard follows the script the
-// user is typing in, so a switch made by petting 莫莫 changes its labels at
+// user is typing in, so a script switch changes its labels at
 // once; the containing app follows the system language.
 struct InterfaceText {
     var simplified: Bool

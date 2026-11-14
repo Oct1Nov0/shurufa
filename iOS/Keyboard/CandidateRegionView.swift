@@ -10,11 +10,7 @@ final class KeyboardUIState: ObservableObject {
     @Published var trailingInset: CGFloat = 0
     @Published var expanded = false
     @Published var dark = false
-    /// The festival theme worn today (docs/FESTIVALS.md), or nil.
-    @Published var festival: FestivalTheme?
-    /// Where 米米莫 and 莫莫 sit today (CatSchedule); empty without the cats.
-    @Published var cats: [CatPlacement] = []
-    /// False while the keyboard is off screen: the cats stop moving.
+    /// False while the keyboard is off screen.
     @Published var active = true
     /// English: completions and a correction for the word before the caret.
     @Published var suggestions: [String] = []
@@ -74,7 +70,6 @@ struct CandidateCell: View {
     let dark: Bool
     let palette: CandidatePalette
     var highContrast = false
-    var festival: Color? = nil
 
     private var kaomoji: Bool { Kaomoji.contains(item.text) }
 
@@ -98,7 +93,7 @@ struct CandidateCell: View {
         .frame(minWidth: item.width, maxWidth: kaomoji ? nil : item.width, minHeight: pillHeight, maxHeight: pillHeight)
         .fixedSize(horizontal: kaomoji, vertical: false)
         .background {
-            if item.selected { CandidatePill(palette: palette, dark: dark, highContrast: highContrast, festival: festival) }
+            if item.selected { CandidatePill(palette: palette, dark: dark, highContrast: highContrast) }
         }
     }
 }
@@ -113,12 +108,6 @@ struct CandidateRegionView: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Touches each cat has had; a change plays its reaction.
-    @State private var pets: [KeyboardCat: Int] = [:]
-    @State private var pressedCat: KeyboardCat?
-    @State private var affection = CatAffection()
-    @State private var particles: [CatParticle] = []
-    @State private var toast: CatToast?
     @State private var extra: [IndexedCandidate] = []
     @State private var extraLoaded = false
 
@@ -133,69 +122,19 @@ struct CandidateRegionView: View {
     var body: some View {
         let layout = ui.region
         let band = CandidateGlassShape.contentBand(preferences.glassShape, height: layout.glass.height)
-        let stage = layout.stage(shape: preferences.glassShape)
         ZStack(alignment: .topLeading) {
             LiquidGlassBar(style: preferences.glassShape, dark: dark, accessible: accessible,
                            strength: preferences.glassStrength, tint: accent)
                 .equatable()
                 .frame(width: layout.glass.width, height: layout.glass.height)
                 .position(x: layout.glass.midX, y: layout.glass.midY)
-            if layout.cats && !accessible && !dark {
-                // The soft light band at the start of the row (CandidateBarPreview draws the same).
-                let span = layout.lightBand
-                Capsule().fill(Color.white.opacity(0.5))
-                    .frame(width: span, height: layout.pillHeight)
-                    .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.6),
-                                                 .init(color: .clear, location: 1)], startPoint: .leading, endPoint: .trailing))
-                    .position(x: layout.row.minX + span / 2, y: layout.glass.minY + (band.top + band.bottom) / 2)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-            barTrim(layout)
-            // Under the row and the expand key: where a cat's touch area meets them, the tap is theirs.
-            ForEach(ui.cats, id: \.cat) { place in petZone(place.cat, rect: place.touch(on: stage)) }
             rowContent(layout)
                 .frame(width: layout.row.width, height: band.bottom - band.top)
                 .position(x: layout.row.midX, y: layout.glass.minY + (band.top + band.bottom) / 2)
-            if !ui.cats.isEmpty {
-                CatStageView(scene: CatLayersView.Scene(places: ui.cats, glass: layout.glass, shape: preferences.glassShape,
-                                                        dark: dark, shadows: !accessible),
-                             active: ui.active, composing: composing, pressed: pressedCat, pets: pets)
-                    .frame(width: layout.width, height: layout.height)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
             chevron(layout)
-            ForEach(particles) { particle in
-                // From the cat's brow upward. A keyboard cannot draw above
-                // its own top edge, so the flight (16 pt) ends inside it.
-                let box = ui.cats.first { $0.cat == particle.cat }?.visible ?? .zero
-                CatParticleView(particle: particle)
-                    .position(x: box.midX, y: max(17 + particle.size / 2, box.minY + box.height * 0.3))
-            }
-            if let toast {
-                CatToastView(toast: toast, dark: dark, tint: accent)
-                    .frame(maxWidth: layout.row.width)
-                    .position(x: layout.row.midX, y: layout.glass.midY)
-                    .id(toast.id)
-                    .transition(reduceMotion ? .opacity : .scale(scale: 0.86).combined(with: .opacity))
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
         }
         .frame(width: layout.width, height: layout.height, alignment: .topLeading)
-        .animation(.spring(duration: 0.3, bounce: 0.3), value: toast)
-        .task(id: toast?.id) {
-            guard let current = toast else { return }
-            try? await Task.sleep(for: .seconds(current.emphasis ? 2.4 : 1.4))
-            if !Task.isCancelled, toast?.id == current.id { toast = nil }
-        }
-        .onChange(of: composing) { was, now in
-            // 米米莫 ducks and shakes his head whenever text is committed.
-            if was && !now { pets[.mimimo, default: 0] &+= 1 }
-        }
-        // The rest of the pool belongs to one reading in one script. 莫莫
-        // can switch the script while the reading stays.
+        // The rest of the pool belongs to one reading in one script.
         .onChange(of: engine.snapshot.input) { _, _ in resetExtra() }
         .onChange(of: preferences.simplified) { _, _ in resetExtra() }
     }
@@ -288,7 +227,7 @@ struct CandidateRegionView: View {
             snapshot.candidateDetails.indices.contains(index) ? snapshot.candidateDetails[index].source : snapshot.compactJapanese?.source
         }
         let cells = CandidateStripLayout.cells(texts: texts, japanese: japanese, pinnedFirst: pinned,
-                                               promoteJapanese: source != -1,
+                                               promoteJapanese: source != -1, keepAll: !snapshot.pinnedKana.isEmpty,
                                                available: layout.row.width, maximum: layout.maximumCandidateWidth,
                                                paw: paw) { CandidateTextMetrics.width($0, size: size) }
         // Cells are identified by their place in the row, so a keystroke
@@ -327,7 +266,7 @@ struct CandidateRegionView: View {
                         } label: {
                             CandidateCell(item: item, fontSize: layout.fontSize, pillHeight: layout.pillHeight,
                                           dark: dark, palette: preferences.candidatePalette,
-                                          highContrast: contrast == .increased, festival: ui.festival?.pill(dark: dark))
+                                          highContrast: contrast == .increased)
                                 .frame(maxHeight: .infinity)
                                 .contentShape(Rectangle())
                         }
@@ -461,86 +400,5 @@ struct CandidateRegionView: View {
         .position(x: layout.chevron.midX, y: layout.chevron.midY)
         .accessibilityLabel(ui.kaomojiOpen && !composing ? (ui.expanded ? t("收合顏文字", "收起颜文字") : t("展開顏文字", "展开颜文字"))
                             : (ui.expanded ? t("收合候選詞", "收起候选词") : t("展開候選詞", "展开候选词")))
-    }
-
-    // MARK: Cats
-
-    /// A decoration laid round the glass's ends (a festival's frame trim)
-    /// goes here: over the glass, under the candidates and the cats. It must
-    /// not take touches. Nothing is drawn for now.
-    @ViewBuilder private func barTrim(_ layout: CandidateRegionLayout) -> some View {
-        if let ends = ui.festival?.ends {
-            let glyph = layout.chevron.midX + CandidateRegionLayout.chevronGlyph.width / 2
-            FestivalEndsView(placed: FestivalEndsLayout.place(ends, glass: layout.glass, shape: preferences.glassShape,
-                                                              width: layout.width, left: layout.row.minX, right: glyph))
-        }
-    }
-
-    private func petZone(_ cat: KeyboardCat, rect: CGRect) -> some View {
-        Button { pet(cat) } label: {
-            Color.clear.frame(width: max(1, rect.width), height: max(1, rect.height)).contentShape(Rectangle())
-        }
-        .buttonStyle(CatPetButtonStyle { pressed in
-            if pressed { pressedCat = cat } else if pressedCat == cat { pressedCat = nil }
-        })
-        .position(x: rect.midX, y: rect.midY)
-        .accessibilityLabel(cat == .mimimo ? "摸摸米米莫" : "摸摸莫莫")
-        .accessibilityHint(cat == .momo ? (preferences.simplified ? "连续轻点五下，切换为繁体" : "連續輕點五下，切換為簡體") : "")
-    }
-
-    private func pet(_ cat: KeyboardCat) {
-        UIDevice.current.playInputClick()
-        switch cat {
-        case .mimimo:
-            pets[.mimimo, default: 0] &+= 1
-            let symbol = ["pawprint.fill", "music.note", "questionmark", "exclamationmark", "sparkle"].randomElement() ?? "pawprint.fill"
-            emit(CatParticle(symbol: symbol, cat: .mimimo, size: 10, drift: CGFloat.random(in: 4...10),
-                             tint: Color(red: 0.86, green: 0.66, blue: 0.24)))
-        case .momo:
-            pets[.momo, default: 0] &+= 1
-            switch affection.pet() {
-            case .pleased(let count):
-                emit(CatParticle(symbol: "heart.fill", cat: .momo, size: 8 + CGFloat(count) * 1.5,
-                                 drift: -CGFloat.random(in: 4...10), tint: Color(red: 0.95, green: 0.45, blue: 0.55)))
-                if count >= 2 {
-                    let left = CatAffection.petsToSwitch - count
-                    // The row of five hearts needs a row wide enough for it and the text.
-                    toast = CatToast(symbol: "heart.fill",
-                                     text: preferences.simplified ? "再摸 \(left) 下，切换为繁体" : "再摸 \(left) 下，切換為簡體",
-                                     hearts: ui.region.row.width >= 230 ? count : nil)
-                }
-            case .happy:
-                celebrate()
-            case .resting:
-                emit(CatParticle(symbol: "heart.fill", cat: .momo, size: 9, drift: -CGFloat.random(in: 4...10),
-                                 tint: Color(red: 0.95, green: 0.45, blue: 0.55)))
-            }
-        }
-    }
-
-    private func celebrate() {
-        let nowSimplified = actions.switchScript()
-        // Short enough for one line on a 320 pt keyboard. In English or
-        // Japanese the switch applies to Chinese, and the wording says so.
-        let text: String
-        if chineseActive { text = nowSimplified ? "已切换为简体中文" : "已切換為繁體中文" }
-        else { text = nowSimplified ? "中文已切换为简体" : "中文已切換為繁體" }
-        toast = CatToast(symbol: "checkmark.circle.fill", text: text, emphasis: true)
-        UIAccessibility.post(notification: .announcement, argument: text)
-        for index in 0..<3 {
-            emit(CatParticle(symbol: index == 1 ? "sparkles" : "heart.fill", cat: .momo, size: 10 + CGFloat(index) * 2,
-                             drift: -CGFloat(4 + index * 5), tint: Color(red: 0.95, green: 0.45, blue: 0.55)))
-        }
-        // 米米莫 notices too.
-        pets[.mimimo, default: 0] &+= 1
-    }
-
-    private func emit(_ particle: CatParticle) {
-        particles.append(particle)
-        if particles.count > 8 { particles.removeFirst(particles.count - 8) }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1))
-            particles.removeAll { $0.id == particle.id }
-        }
     }
 }

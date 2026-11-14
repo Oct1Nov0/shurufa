@@ -21,6 +21,8 @@ struct Snapshot: Decodable, Equatable {
     var japaneseCandidates: [String] = []
     var compactJapanese: IndexedCandidate? = nil
     var preferredCompleteMixed: String? = nil
+    /// The hiragana and katakana of a one-kana reading, kept second and third in the row.
+    var pinnedKana: [String] = []
     var compactIndices: [Int] {
         let japanese = Set(japaneseCandidates)
         let first = candidates.firstIndex { japanese.contains($0) }
@@ -68,17 +70,10 @@ final class Preferences: ObservableObject {
     @Published var simplified: Bool { didSet { defaults.set(simplified, forKey: "simplified") } }
     @Published var modulesEnabled: Bool { didSet { defaults.set(modulesEnabled, forKey: "modulesEnabled") } }
     @Published var rememberChoices: Bool { didSet { defaults.set(rememberChoices, forKey: "rememberChoices") } }
-    @Published var catGlassSkin: Bool { didSet { defaults.set(catGlassSkin, forKey: "catGlassSkin") } }
-    /// Where the cats sit: `CatSchedule.daily`, or one arrangement's id.
-    @Published var catPlacement: String { didSet { defaults.set(catPlacement, forKey: "catPlacement") } }
     @Published var candidateTone: CandidateTone { didSet { defaults.set(candidateTone.rawValue, forKey: "candidateTone") } }
     @Published var glassStrength: GlassStrength { didSet { defaults.set(glassStrength.rawValue, forKey: "glassStrength") } }
     @Published var candidatePalette: CandidatePalette { didSet { defaults.set(candidatePalette.rawValue, forKey: "candidatePalette") } }
     @Published var glassShape: GlassShape { didSet { defaults.set(glassShape.rawValue, forKey: "glassShape") } }
-    // The festival wardrobe (docs/FESTIVALS.md): the master switch and the themes switched off.
-    @Published var festivalOutfits: Bool { didSet { defaults.set(festivalOutfits, forKey: "festivalOutfits") } }
-    @Published var festivalsSkipped: [String] { didSet { defaults.set(festivalsSkipped, forKey: "festivalsSkipped") } }
-    var festivalWardrobe: FestivalWardrobe { FestivalWardrobe(on: festivalOutfits, skipped: Set(festivalsSkipped)) }
     var inputMode: InputMode {
         get { InputMode(rawValue: defaults.string(forKey: "inputMode") ?? "") ?? .pinyin }
         set { defaults.set(newValue.rawValue, forKey: "inputMode") }
@@ -96,12 +91,7 @@ final class Preferences: ObservableObject {
             .appendingPathComponent(enginePreview ? "Meowpuut Engine Preview" : "Meowpuut")
     var moduleDirectory: URL { Self.directory.appendingPathComponent("Modules") }
     private init() {
-        // 米米莫 and 莫莫 are the default on every platform.
-        catGlassSkin = false
-        catPlacement = defaults.string(forKey: "catPlacement") ?? CatSchedule.daily
         glassShape = GlassShape(rawValue: defaults.string(forKey: "glassShape") ?? "") ?? .capsule
-        festivalOutfits = false
-        festivalsSkipped = defaults.stringArray(forKey: "festivalsSkipped") ?? []
         candidateTone = CandidateTone(rawValue: defaults.string(forKey: "candidateTone") ?? "") ?? .system
         glassStrength = GlassStrength(rawValue: defaults.string(forKey: "glassStrength") ?? "") ?? .balanced
         candidatePalette = .graphite
@@ -224,6 +214,75 @@ final class Engine: ObservableObject {
         }
         snapshot.commit = committed
     }
+    /// The hiragana and katakana of the input when it is one kana (a あ, ka か, kya きゃ, xa ぁ).
+    private func oneKana() -> [String] {
+        guard !english, inputMode == .pinyin || inputMode == .japanese else { return [] }
+        let letters = snapshot.input.lowercased()
+        guard !letters.isEmpty, letters.count <= 4, letters.allSatisfy({ $0.isASCII && $0.isLetter }) else { return [] }
+        let hiragana = Romaji.reading(letters)
+        let scalars = Array(hiragana.unicodeScalars)
+        guard scalars.allSatisfy({ (0x3041...0x3096).contains($0.value) }) else { return [] }
+        let small = Array("ぁぃぅぇぉゃゅょゎ".unicodeScalars)
+        guard scalars.count == 1 || (scalars.count == 2 && small.contains(scalars[1])) else { return [] }
+        let katakana = hiragana.applyingTransform(.hiraganaToKatakana, reverse: false) ?? hiragana
+        return hiragana == katakana ? [hiragana] : [hiragana, katakana]
+    }
+    /// The first page as this user wants it. Every word starts with the rank the
+    /// lexicon gives it; each time a word is picked for a reading its count for
+    /// that reading goes up by one, and picked words lead the row, most picked
+    /// first (the latest pick first among equals). The kana of a one-kana reading
+    /// then take the second and third places.
+    private func personalise() {
+        snapshot.pinnedKana = []
+        guard snapshot.page == 0, !snapshot.input.isEmpty, moduleBuffer == nil, !english else { return }
+        let key = pinKey
+        let usage = ChoiceMemory.shared.usage(for: key)
+        let kana = oneKana()
+        guard !usage.isEmpty || !kana.isEmpty else { return }
+        let pool = candidates()
+        var visible = snapshot.candidateDetails
+        let kanaSet = Set(kana)
+        if !usage.isEmpty {
+            let context = learningTail.flatMap { Date().timeIntervalSince1970 - $0.time < 20 ? $0.text : nil }
+            let after = ChoiceMemory.shared.contextual(for: key, after: context)
+            var seen = Set<String>()
+            // Emoji and kaomoji cells (-7, -8, and -1 other than kana) keep their own places.
+            let picked = pool.filter { item in
+                guard usage[item.text] != nil else { return false }
+                if let source = item.source, source == -7 || source == -8 || (source == -1 && !kanaSet.contains(item.text)) { return false }
+                return seen.insert(item.text).inserted
+            }.sorted { a, b in
+                let ca = after.contains(a.text), cb = after.contains(b.text)
+                if ca != cb { return ca }
+                let ua = usage[a.text]!, ub = usage[b.text]!
+                if ua.uses != ub.uses { return ua.uses > ub.uses }
+                if ua.lastUsed != ub.lastUsed { return ua.lastUsed > ub.lastUsed }
+                return a.index < b.index
+            }
+            if !picked.isEmpty {
+                let texts = Set(picked.map(\.text))
+                visible.removeAll { texts.contains($0.text) }
+                visible.insert(contentsOf: picked, at: 0)
+            }
+        }
+        var slot = 1
+        var pinned: [String] = []
+        for text in kana {
+            guard let item = visible.first(where: { $0.text == text }) ?? pool.first(where: { $0.text == text }) else { continue }
+            pinned.append(text)
+            if visible.first?.text == text { continue }
+            visible.removeAll { $0.text == text }
+            visible.insert(item, at: min(slot, visible.count))
+            slot += 1
+        }
+        let page = Array(visible.prefix(max(7, snapshot.candidates.count)))
+        guard page.map(\.index) != candidateOrder || !pinned.isEmpty else { return }
+        candidateOrder = page.map(\.index)
+        snapshot.candidates = page.map(\.text)
+        snapshot.candidateDetails = page
+        snapshot.highlighted = 0
+        snapshot.pinnedKana = pinned
+    }
     var pinKey: String {
         let script = Preferences.shared.simplified ? "s:" : "t:"
         switch inputMode {
@@ -273,7 +332,7 @@ final class Engine: ObservableObject {
         }
     }
     static var loadFailedMessage: String {
-        Preferences.shared.simplified ? "无法加载喵扑词库。" : "無法載入喵撲詞庫。"
+        Preferences.shared.simplified ? "无法加载词库。" : "無法載入詞庫。"
     }
     /// Builds the backend for a mode. The lexicon is parsed here, the slow
     /// part of starting up, so this may run off the main thread. With `warm`
@@ -328,33 +387,9 @@ final class Engine: ObservableObject {
                 IndexedCandidate(index: $0.0, text: $0.1, backendIndex: $0.0, source: inputMode == .japanese ? 1 : nil)
             }
         }
-        let preferred = ChoiceMemory.shared.preferred(for: pinKey, context: learningTail.flatMap { Date().timeIntervalSince1970 - $0.time < 20 ? $0.text : nil })
-        if snapshot.page == 0, !snapshot.input.isEmpty, !preferred.isEmpty {
-            let available = candidates()
-            var promoted: [Int] = []
-            for text in preferred {
-                guard let found = available.first(where: { $0.text == text }), !promoted.contains(found.index) else { continue }
-                promoted.append(found.index)
-            }
-            var visible = snapshot.candidateDetails
-            for id in promoted where !visible.contains(where: { $0.index == id }) {
-                if let item = available.first(where: { $0.index == id }) { visible.append(item) }
-            }
-            let context = learningTail.flatMap { Date().timeIntervalSince1970 - $0.time < 20 ? $0.text : nil }
-            let slots = visible.indices.filter { snapshot.candidateWeights[visible[$0].text] != nil }
-            let ranked = slots.map { visible[$0] }.sorted { a, b in
-                let aScore = snapshot.candidateWeights[a.text, default: 0] + ChoiceMemory.shared.boost(for: pinKey, text: a.text, context: context)
-                let bScore = snapshot.candidateWeights[b.text, default: 0] + ChoiceMemory.shared.boost(for: pinKey, text: b.text, context: context)
-                return aScore == bScore ? a.index < b.index : aScore > bScore
-            }
-            for (slot, item) in zip(slots, ranked) { visible[slot] = item }
-            candidateOrder = Array(visible.map(\.index).prefix(7))
-            snapshot.candidates = Array(visible.map(\.text).prefix(7))
-            snapshot.candidateDetails = Array(visible.prefix(7))
-            snapshot.highlighted = 0
-        }
+        personalise()
         if snapshot.page == 0, inputMode == .pinyin,
-           !snapshot.candidates.contains(where: { snapshot.japaneseCandidates.contains($0) }) {
+           !snapshot.candidates.contains(where: { snapshot.japaneseCandidates.contains($0) && !snapshot.pinnedKana.contains($0) }) {
             snapshot.compactJapanese = backend.compactJapanese()
         } else {
             snapshot.compactJapanese = nil

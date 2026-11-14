@@ -26,7 +26,10 @@ enum Romaji {
         return result
     }()
 
-    static func reading(_ raw: String) -> String {
+    /// `editing` is the reading shown while it is typed: a trailing n stays a
+    /// letter until the next key says what it is (na な, nn ん, nk んk), and nn
+    /// before a consonant is one ん.
+    static func reading(_ raw: String, editing: Bool = false) -> String {
         let input = Array(raw.lowercased())
         var result = "", position = 0
         while position < input.count {
@@ -36,10 +39,12 @@ enum Romaji {
             if key == "'" { position += 1; continue }
             if key == "n" {
                 if next == "'" { result += "ん"; position += 2; continue }
-                if next == nil { result += "ん"; position += 1; continue }
+                if next == nil { result += editing ? "n" : "ん"; position += 1; continue }
                 if next == "n" {
                     result += "ん"
-                    position += position + 2 == input.count ? 2 : 1
+                    let following: Character? = position + 2 < input.count ? input[position + 2] : nil
+                    let closed = following == nil || (editing && !"aiueoy'".contains(following!))
+                    position += closed ? 2 : 1
                     continue
                 }
                 if let next, !"aiueoy".contains(next) { result += "ん"; position += 1; continue }
@@ -154,7 +159,9 @@ final class JapaneseBackend: InputBackend {
     }
     private func refresh() {
         guard !raw.isEmpty else { clear(); return }
-        let reading = Romaji.reading(raw)
+        // Pinyin's side engine keeps the plain reading; Japanese mode shows a waiting n.
+        let shown = pinyinSide ? Romaji.reading(raw) : Romaji.reading(raw, editing: true)
+        let reading = shown.hasSuffix("n") ? String(shown.dropLast()) + "ん" : shown
         choices = JapaneseLexicon.words(raw, mode: pinyinSide ? JapaneseLexicon.pinyinMode : JapaneseLexicon.japaneseMode,
                                         limit: pinyinSide ? 5 : 64).map(\.text)
         let katakana = reading.applyingTransform(.hiraganaToKatakana, reverse: false) ?? reading
@@ -177,7 +184,7 @@ final class JapaneseBackend: InputBackend {
             choices += rest
         }
         // Japanese mode: nothing is flagged, so the collapsed row shows every word, not one.
-        state = Snapshot(preedit: reading, input: raw, japaneseCandidates: pinyinSide ? choices : [])
+        state = Snapshot(preedit: shown, input: raw, japaneseCandidates: pinyinSide ? choices : [])
         page(0)
     }
     func key(_ key: Int32, modifiers: Int32) -> Bool {
