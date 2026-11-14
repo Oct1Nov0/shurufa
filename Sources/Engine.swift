@@ -19,6 +19,8 @@ struct Snapshot: Decodable, Equatable {
     var confidentCandidates: [String] = []
     var candidateWeights: [String: Int] = [:]
     var japaneseCandidates: [String] = []
+    /// Guesses for mistyped letters, shown in the accent colour.
+    var correctedCandidates: [String] = []
     var compactJapanese: IndexedCandidate? = nil
     var preferredCompleteMixed: String? = nil
     /// The hiragana and katakana of a romaji reading, kept second and third in the row.

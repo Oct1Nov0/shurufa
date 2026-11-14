@@ -205,6 +205,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         // the composition and candidates stay as they were.
         ui.appearanceRevision &+= 1
         ui.active = true
+        UserDictionary.reload()
         updatePaste()
         shortSince = nil
         if appliedSettingsOnLoad { appliedSettingsOnLoad = false } else { Preferences.shared.applySharedSettings() }

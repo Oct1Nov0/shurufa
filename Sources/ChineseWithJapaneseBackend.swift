@@ -25,6 +25,8 @@ final class ChineseWithJapaneseBackend: InputBackend {
     /// the letters read as romaji and cannot be split into pinyin syllables.
     private var sentenceTexts = Set<String>()
     private var japaneseLead = false
+    /// Guesses for letters that are not pinyin (source -10).
+    private var corrections: [String] = []
     private var englishContext = false
     private var segmentContext = ""
     /// Emoji and kaomoji of the first candidate, as listed among the choices.
@@ -62,7 +64,7 @@ final class ChineseWithJapaneseBackend: InputBackend {
         guard locked == nil, choices.indices.contains(index) else { return 0 }
         if choices[index].source == -2 { return -1 }
         if choices[index].source == -3 { return 0 }
-        if choices[index].source == 1 || choices[index].source == -1 || choices[index].source == -9 || choices[index].source == -4 || choices[index].source == -5 || choices[index].source == -6 { return 2 }
+        if choices[index].source == 1 || choices[index].source == -1 || choices[index].source == -9 || choices[index].source == -10 || choices[index].source == -4 || choices[index].source == -5 || choices[index].source == -6 { return 2 }
         return mode != .pinyin || exactChinese.contains(choices[index].text) ? 0 : 1
     }
     func candidates(limit: Int) -> [IndexedCandidate] {
@@ -424,6 +426,11 @@ final class ChineseWithJapaneseBackend: InputBackend {
         if sentences.isEmpty { japaneseLead = false }
         sentenceTexts = Set(sentences)
         for text in sentences { append(text, source: -9, index: 0) }
+        // Not pinyin and no word for the letters: what was probably meant.
+        corrections = pinyinFirst && !hasTones && dictionary.isEmpty && personalCandidates.isEmpty
+            && UserDictionary.words(for: raw).isEmpty
+            ? Correction.words(for: raw.lowercased(), simplified: simplified) : []
+        for text in corrections { append(text, source: -10, index: 0) }
         // Short letters as typed (ok, ai). Zhuyin raw input is key codes (sc for ㄋㄏ), never offered.
         if pinyinFirst && raw.count <= 3 && raw.utf8.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) }) {
             append(raw, source: -4, index: 0)
@@ -451,6 +458,8 @@ final class ChineseWithJapaneseBackend: InputBackend {
         func tier(_ choice: Choice) -> Int {
             // Romaji that is not pinyin: the Japanese sentences lead, the letters as typed follow the words.
             if japaneseLead, sentenceTexts.contains(choice.text) { return 0 }
+            // A guess leads, after the Japanese when the letters read as romaji.
+            if choice.source == -10 { return japaneseLead ? 1 : -1 }
             if choice.source == -2 { return japaneseLead ? 3 : 0 }
             if choice.source == -9 { return 4 }
             if remembered.contains(choice.text) && strongTexts.isEmpty { return 1 }
@@ -536,6 +545,18 @@ final class ChineseWithJapaneseBackend: InputBackend {
                 choices.insert(Choice(text: kaomoji, source: -8, index: 0, metadata: nil), at: min(choices.count, symbols.emoji.isEmpty ? 3 : 4))
             }
         }
+        // Words added in the app: second, until one is picked (then memory leads it).
+        if pinyinFirst, !hasTones {
+            let added = UserDictionary.words(for: raw).filter { word in !choices.prefix(1).contains { $0.text == word } }
+            if !added.isEmpty {
+                choices.removeAll { added.contains($0.text) }
+                choices.insert(contentsOf: added.map { Choice(text: $0, source: -3, index: 0, metadata: nil) }, at: min(1, choices.count))
+                exactChinese.formUnion(added)
+                state.japaneseCandidates.removeAll { added.contains($0) }
+            }
+        }
+        state.correctedCandidates = corrections
+        state.japaneseCandidates.removeAll { corrections.contains($0) }
         if state.preedit.isEmpty { state.preedit = pinyinFirst ? raw : zhuyinText(raw) }
         showPage(0)
     }

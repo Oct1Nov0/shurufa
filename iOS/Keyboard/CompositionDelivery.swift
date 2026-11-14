@@ -89,8 +89,10 @@ enum SyllableBreaks {
     /// the longer one (fang an, not fan gan). nil when the letters are not pinyin.
     /// Whether the letters split into pinyin syllables (the last may be unfinished).
     static func isPinyin(_ letters: String) -> Bool { !letters.isEmpty && split(letters) != nil }
+    /// Whether the letters are whole pinyin syllables, none left unfinished.
+    static func isWholePinyin(_ letters: String) -> Bool { !letters.isEmpty && split(letters, unfinished: false) != nil }
 
-    private static func split(_ letters: String) -> [Int]? {
+    private static func split(_ letters: String, unfinished: Bool = true) -> [Int]? {
         let chars = Array(letters)
         let n = chars.count
         var best = [Double](repeating: .infinity, count: n + 1), from = [Int](repeating: -1, count: n + 1)
@@ -98,7 +100,7 @@ enum SyllableBreaks {
         for end in 1...n {
             for start in stride(from: end - 1, through: max(0, end - 6), by: -1) where best[start] < .infinity {
                 let piece = String(chars[start..<end])
-                let cost: Double = syllables.contains(piece) ? 1 : (end == n && prefixes.contains(piece) ? 1.5 : .infinity)
+                let cost: Double = syllables.contains(piece) ? 1 : (unfinished && end == n && prefixes.contains(piece) ? 1.5 : .infinity)
                 if best[start] + cost < best[end] { best[end] = best[start] + cost; from[end] = start }
             }
         }

@@ -10,7 +10,7 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Tools
         run: |
@@ -52,6 +52,10 @@ jobs:
         run: |
           APP=.build/iOS/Build/Products/Release-iphoneos/ZhJaKeyboard.app
           test -d "$APP/PlugIns/ZhJaKeyboardExtension.appex"
+          # Ad hoc signatures that carry the app group; Sideloadly re-signs with them.
+          codesign -f -s - --entitlements iOS/AppGroup.entitlements "$APP/PlugIns/ZhJaKeyboardExtension.appex"
+          codesign -f -s - --entitlements iOS/AppGroup.entitlements "$APP"
+          codesign -d --entitlements - "$APP/PlugIns/ZhJaKeyboardExtension.appex"
           rm -rf .build/ipa && mkdir -p .build/ipa/Payload
           cp -R "$APP" .build/ipa/Payload/
           (cd .build/ipa && zip -qry ../ZhJaKeyboard.ipa Payload)

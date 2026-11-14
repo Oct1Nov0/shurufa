@@ -75,6 +75,7 @@ struct StripItem: Identifiable, Equatable {
     var selected: Bool
     var width: CGFloat
     var target: Target
+    var corrected = false
 }
 
 struct CandidateCell: View {
@@ -100,7 +101,7 @@ struct CandidateCell: View {
                     .opacity(item.selected ? 0.9 : 0.6)
             }
         }
-        .foregroundStyle(item.selected ? Color.white : CandidateInk.text(dark: dark))
+        .foregroundStyle(item.selected ? Color.white : item.corrected ? Color.accentColor : CandidateInk.text(dark: dark))
         .padding(.horizontal, CandidateStripLayout.padding)
         // A kaomoji takes the width it is drawn at: its characters come from
         // fallback fonts, and the measured width can be short of that.
@@ -256,7 +257,8 @@ struct CandidateRegionView: View {
         // changes their text instead of replacing every cell.
         var result = cells.enumerated().map { slot, cell in
             StripItem(id: "s\(slot)", text: cell.text, japanese: cell.japanese,
-                      selected: cell.index == snapshot.highlighted, width: cell.width, target: .visible(cell.index))
+                      selected: cell.index == snapshot.highlighted, width: cell.width, target: .visible(cell.index),
+                      corrected: snapshot.correctedCandidates.contains(cell.text))
         }
         // Past the first page, like the system keyboard: the rest of the
         // ranked pool, without further Japanese readings.
