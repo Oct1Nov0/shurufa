@@ -4,6 +4,8 @@
 
 本仓库基于开源输入法 [喵撲 Meowpuut](https://github.com/Krysta1ll/Meowpuut) 的代码和词库（MIT 授权，提交 `aaee845`）精简而来，原项目的版权声明见 [LICENSE](LICENSE)，词库来源见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 
+- 拼音词频混合了[白霜拼音](https://github.com/gaboolic/rime-frost)（GPL-3.0）的字频和词频，并补入它收录而原词库没有的常用词和短语。
+
 ## 编译
 
 推送到 `main` 分支后，GitHub Actions 会在 `xcode-27` 镜像上编译，产物是未签名的 `ZhJaKeyboard.ipa`，在 Actions 页面对应那次运行的 Artifacts 里下载。也可以在 Actions 页面手动点 Run workflow。

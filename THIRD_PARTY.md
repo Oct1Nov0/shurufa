@@ -86,3 +86,7 @@
 ## AzooKeyKanaKanjiConverter
 
 Whole-sentence Japanese conversion uses [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) 0.11.2 (MIT, © Miwa / Ensan) with its default dictionary [azooKey_dictionary_storage](https://github.com/ensan-hcl/azooKey_dictionary_storage) (Apache-2.0). Both are fetched by Swift Package Manager at build time.
+
+## rime-frost (白霜拼音)
+
+The pinyin weights are blended with the character and word frequencies of [rime-frost](https://github.com/gaboolic/rime-frost) (GPL-3.0), and words it lists that the lexicon lacks are added (`scripts/frost_weights.py`, `DataSources/rime-frost`). A build that contains this data is covered by the GPL-3.0 when it is passed on to others.

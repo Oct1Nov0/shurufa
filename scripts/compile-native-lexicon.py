@@ -1,5 +1,6 @@
 """Compile the bundled mimo-tc, mimo-sc, and mimo-jp lexicons into portable UTF-8 tables."""
 import collections
+import os
 import functools
 import pathlib
 import re
@@ -12,6 +13,7 @@ import unicodedata
 import subprocess
 import statistics
 from japanese_readings import pinyin_kana
+from frost_weights import ABBREVIATE_MIN, frost_additions, frost_weights
 from mimo_binary import write_mimo_binaries
 from mimo_jp_compile import write_mimo_jp
 from mimo_latin import latin_rows
@@ -391,6 +393,7 @@ def main(destination, converter, *options):
         zhuyin_weight = counted_shift(zhuyin_weight, reviewed_keys | name_keys, count_weight, ZHUYIN_COUNT_SHARE)
         zhuyin_weight = spoken_weights(zhuyin_weight, reviewed_keys, merge_report, "zhuyin")
         pinyin_weight = spoken_weights(pinyin_weight, reviewed_keys, merge_report, "pinyin")
+        if os.environ.get("FROST", "1") != "0": pinyin_weight = frost_weights(pinyin_weight, reviewed_keys | name_keys, merge_report)
     for (hant, hans, code), merged_weight in words.items():
         if (hant, hans, code) not in native_keys: continue
         sounds = code.split()
@@ -405,6 +408,15 @@ def main(destination, converter, *options):
                 add("pinyin", re.sub("[1-5]", "", short), short, hant, hans, max(1, weight // 8))
         for reading in aliases: add("pinyin", re.sub("[1-5]", "", reading), reading, hant, hans, weight)
         if len(hant) > 1: context[hant] = max(context.get(hant, 0), merged_weight)
+    # Words and set phrases of rime-frost the lexicon lacks: pinyin only.
+    if counts and os.environ.get("FROST", "1") != "0":
+        for hant, hans, code, weight, frequency in frost_additions(pinyin_weight, converter, merge_report):
+            sounds = code.split()
+            if frequency >= ABBREVIATE_MIN:
+                for short in abbreviations(sounds):
+                    add("pinyin", re.sub("[1-5]", "", short), short, hant, hans, max(1, weight // 8))
+            reading = "".join(sounds)
+            add("pinyin", re.sub("[1-5]", "", reading), reading, hant, hans, weight)
     # The merge keeps one Traditional form per (Simplified, reading). Zhuyin output is Traditional
     # only, so it also gets the other mimo-tc forms (讚 next to 贊, 準 next to 准). A word gets its
     # mimo-tc weight + offset; a single character is placed below the kept form by its mimo-tc

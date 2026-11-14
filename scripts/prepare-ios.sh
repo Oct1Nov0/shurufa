@@ -33,4 +33,6 @@ cp DataSources/mimo-phrases/SOURCE.json iOS/Generated/Licenses/mimo-phrases-SOUR
 cp DataSources/mimo-pairs/CC-BY-2.0-FR.html iOS/Generated/Licenses/mimo-pairs-Tatoeba-CC-BY-2.0-FR.html
 cp DataSources/mimo-pairs/CC0-1.0.txt iOS/Generated/Licenses/mimo-pairs-CommonVoice-CC0-1.0.txt
 cp DataSources/mimo-latin/SOURCE.json iOS/Generated/Licenses/mimo-latin-SOURCE.json
+cp DataSources/rime-frost/LICENSE iOS/Generated/Licenses/rime-frost-GPL-3.0.txt
+cp DataSources/rime-frost/SOURCE.json iOS/Generated/Licenses/rime-frost-SOURCE.json
 xcodegen generate --spec iOS/project.yml
