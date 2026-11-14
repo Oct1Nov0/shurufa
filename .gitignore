@@ -1,0 +1,9 @@
+.build/
+target/
+.DS_Store
+iOS/Generated/
+iOS/*.xcodeproj/
+__pycache__/
+*.pyc
+*.p12
+*.mobileprovision

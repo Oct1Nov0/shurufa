@@ -1,0 +1,71 @@
+name: Build iOS
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ipa:
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          python3 --version
+          if ! command -v cargo >/dev/null && [ ! -x "$HOME/.cargo/bin/cargo" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          fi
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup target add aarch64-apple-ios
+          cargo --version
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen --version
+
+      - name: Lexicon and Xcode project
+        run: bash scripts/prepare-ios.sh
+
+      - name: Build
+        run: |
+          set -o pipefail
+          mkdir -p .build
+          xcodebuild -project iOS/ZhJaKeyboard.xcodeproj -scheme ZhJaKeyboard \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath .build/iOS \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee .build/xcodebuild.log | grep -E "error:|warning: unre|BUILD|^\*\*|Rust engine" || true
+          grep -q "BUILD SUCCEEDED" .build/xcodebuild.log
+
+      - name: Errors
+        if: failure()
+        run: |
+          if [ -f .build/xcodebuild.log ]; then
+            grep -n -B2 -A6 "error:" .build/xcodebuild.log | head -400 || true
+            tail -60 .build/xcodebuild.log
+          fi
+
+      - name: Package ipa
+        run: |
+          APP=.build/iOS/Build/Products/Release-iphoneos/ZhJaKeyboard.app
+          test -d "$APP/PlugIns/ZhJaKeyboardExtension.appex"
+          rm -rf .build/ipa && mkdir -p .build/ipa/Payload
+          cp -R "$APP" .build/ipa/Payload/
+          (cd .build/ipa && zip -qry ../ZhJaKeyboard.ipa Payload)
+          ls -lh .build/ZhJaKeyboard.ipa
+          du -sh "$APP" "$APP/PlugIns/ZhJaKeyboardExtension.appex"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZhJaKeyboard-ipa
+          path: .build/ZhJaKeyboard.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: .build/xcodebuild.log
+          if-no-files-found: ignore
