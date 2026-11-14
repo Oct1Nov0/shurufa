@@ -20,6 +20,10 @@ final class KeyboardUIState: ObservableObject {
     /// it is closed. Set when the list opens, so cells stay put while it is used.
     @Published var kaomojiRow: [String] = []
     var kaomojiOpen: Bool { !kaomojiRow.isEmpty }
+    /// The reading being typed, shown above the candidate bar, and the caret in it.
+    @Published var reading = ""
+    @Published var readingCaret: Int?
+    @Published var readingHeight: CGFloat = 22
     /// The clipboard holds text and the keyboard may read it (Full Access).
     @Published var canPaste = false
 }

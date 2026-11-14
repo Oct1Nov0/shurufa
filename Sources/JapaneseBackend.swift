@@ -164,6 +164,7 @@ final class JapaneseBackend: InputBackend {
     }
     func setSimplified(_ simplified: Bool) {} // Japanese spelling does not follow Chinese script settings.
     func clear() { raw = ""; state = Snapshot(); choices = []; symbols = nil }
+    func replaceInput(_ input: String) { raw = String(input.prefix(80)); refresh() }
     func commit() { if !choices.isEmpty { _ = choose(state.page * 7) } else { let text = raw; clear(); state.commit = text } }
     func choose(_ index: Int) -> Bool {
         guard choices.indices.contains(index) else { return false }

@@ -503,6 +503,10 @@ final class KeyboardKeysView: UIView {
         refreshAccessibility()
     }
 
+    /// Set by the controller before the space bar turns into a cursor: inside an
+    /// open reading the key labels stay visible.
+    var cursorKeepsLabels = false
+
     func setDimmed(_ dimmed: Bool) {
         caps.flatMap { $0 }.forEach { $0.dimmed = dimmed && $0.key.action != .space }
     }
@@ -714,7 +718,7 @@ final class KeyboardKeysView: UIView {
                 guard self.delegate?.keysViewCanBeginCursor(self) ?? true else { return }
                 track.phase = .cursor
                 self.cap(at: track.position)?.pressed = false
-                self.setDimmed(true)
+                self.setDimmed(!self.cursorKeepsLabels)
                 self.delegate?.keysViewBeginCursor(self)
                 // Start from where the finger is now, not where it came down.
                 driver.startCursor(at: Double(track.point.x))

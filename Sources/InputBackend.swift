@@ -28,8 +28,14 @@ protocol InputBackend: AnyObject {
     func priorityGroup(_ index: Int) -> Int
     func compactJapanese() -> IndexedCandidate?
     func predict(context: String, limit: Int) -> [String]
+    /// Sets the reading to `input`, as if it had been typed from empty.
+    func replaceInput(_ input: String)
 }
 extension InputBackend {
+    func replaceInput(_ input: String) {
+        clear()
+        for scalar in input.unicodeScalars { _ = key(Int32(scalar.value), modifiers: 0) }
+    }
     func priorityGroup(_ index: Int) -> Int { 0 }
     func compactJapanese() -> IndexedCandidate? { nil }
     func predict(context: String, limit: Int) -> [String] { [] }

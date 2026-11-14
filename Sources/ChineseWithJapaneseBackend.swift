@@ -88,6 +88,13 @@ final class ChineseWithJapaneseBackend: InputBackend {
         engines.forEach { $0.clear() }
         raw = ""; state = Snapshot(); choices = []; locked = nil; englishContext = false; segmentContext = ""; symbols = nil
     }
+    /// One rebuild for the whole reading (an edit inside it), not one per letter.
+    func replaceInput(_ input: String) {
+        clear()
+        guard !input.isEmpty else { return }
+        raw = input
+        rebuild()
+    }
     func commit() {
         if let locked { engines[locked].commit(); readLocked() }
         else if !choices.isEmpty { _ = choose(0) }

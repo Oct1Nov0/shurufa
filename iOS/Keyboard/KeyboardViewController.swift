@@ -30,6 +30,8 @@ struct KeyboardRootView: View {
         ZStack(alignment: .top) {
             KeyboardBackground(dark: ui.dark, glass: ui.region.glass.offsetBy(dx: ui.sideInset, dy: 0))
             VStack(spacing: 0) {
+                ReadingRow(ui: ui)
+                    .frame(height: ui.readingHeight)
                 CandidateRegionView(engine: engine, ui: ui, actions: actions)
                     .frame(height: ui.region.height)
                     .id(ui.appearanceRevision)
@@ -103,6 +105,10 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     private var documentID: UUID?
     private var delivering = false
     private var compositionDelivery = CompositionDelivery()
+    /// Words chosen for the open reading, written to the host when it is finished.
+    private var heldPrefix = ""
+    /// Space is moving the caret inside the reading, not in the host's text.
+    private var readingCursor = false
     /// The word the shown suggestions are for; the same word is not checked twice.
     private var checkedWord: String?
     /// The last insertion was a tapped suggestion and its space.
@@ -329,7 +335,9 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         // Only a height that stays too small is fitted into: a smaller bar
         // and shorter keys, and in landscape the bar without the cats, so
         // every row stays above the system's globe bar.
-        let wanted = (region.height + area).rounded()
+        let reading: CGFloat = idiom == .pad ? 26 : (idiom == .phoneLandscape ? 18 : 22)
+        if ui.readingHeight != reading { ui.readingHeight = reading }
+        let wanted = (reading + region.height + area).rounded()
         let room = (view.bounds.height - insets.bottom).rounded(.down)
         if view.window != nil, room > 0, wanted > room + 0.5 {
             let now = ProcessInfo.processInfo.systemUptime
@@ -342,7 +350,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
                     idiom = .phoneLandscape
                     region = CandidateRegionLayout(width: width, idiom: idiom, rim: rim)
                 }
-                area = max(1, room - region.height)
+                area = max(1, room - reading - region.height)
             }
         } else {
             shortSince = nil
@@ -358,7 +366,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         let theme = KeyboardKeyTheme(dark: ui.dark, highContrast: UIAccessibility.isDarkerSystemColorsEnabled,
                                      palette: prefs.candidatePalette, bold: UIAccessibility.isBoldTextEnabled,
                                      opaque: true, liquid: false)
-        keysView.configure(keySet: keySet, metrics: metrics, idiom: idiom, theme: theme, width: width, areaTop: region.height)
+        keysView.configure(keySet: keySet, metrics: metrics, idiom: idiom, theme: theme, width: width, areaTop: reading + region.height)
         if let heightConstraint, abs(heightConstraint.constant - wanted) >= 0.5 { heightConstraint.constant = wanted }
     }
 
@@ -606,12 +614,18 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     }
 
     func keysViewCanBeginCursor(_ view: KeyboardKeysView) -> Bool {
-        engine.snapshot.preedit.isEmpty && engine.moduleBuffer == nil && pendingInput.isEmpty
+        guard pendingInput.isEmpty, engine.moduleBuffer == nil else { return false }
+        let idle = engine.snapshot.preedit.isEmpty
+        guard idle || engine.canEditReading else { return false }
+        view.cursorKeepsLabels = !idle
+        return true
     }
 
     func keysViewBeginCursor(_ view: KeyboardKeysView) {
         whenReady { [weak self] in
             guard let self else { return }
+            // Inside a reading the caret moves among its letters; it stays open.
+            if !self.engine.snapshot.preedit.isEmpty { self.readingCursor = true; return }
             self.engine.finishComposition()
             self.deliver()
             self.updateContext()
@@ -621,6 +635,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     func keysView(_ view: KeyboardKeysView, moveCursor offset: Int) {
         whenReady { [weak self] in
             guard let self else { return }
+            if self.readingCursor { self.engine.moveCaret(by: offset); self.updateReading(); return }
             let proxy = self.textDocumentProxy
             let units = CursorStep.utf16Offset(characters: offset, before: proxy.documentContextBeforeInput,
                                                after: proxy.documentContextAfterInput)
@@ -629,6 +644,8 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     }
 
     func keysViewEndCursor(_ view: KeyboardKeysView) {
+        readingCursor = false
+        view.cursorKeepsLabels = false
         updateContext()
         updateKeys()
     }
@@ -668,6 +685,11 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             updateContext()
             return
         }
+        if modifiers == 0, engine.caret != nil, let scalar = UnicodeScalar(UInt32(code)),
+           scalar.isASCII, Character(scalar).isLetter || scalar == "'" || scalar == "-",
+           engine.insertAtCaret(code) {
+            deliver(); updateContext(); return
+        }
         let handled = engine.key(code, modifiers: modifiers)
         deliver()
         if !handled && code == 0xff0d { textDocumentProxy.insertText("\n") }
@@ -702,24 +724,20 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
         delivering = true
         defer { delivering = false }
         primaryLanguage = engine.english ? "en-US" : engine.inputMode == .japanese ? "ja-JP" : Preferences.shared.simplified ? "zh-Hans" : "zh-Hant"
+        // Nothing is written to the host while a reading is open: the reading
+        // and the words chosen for it are shown above the candidates.
         let commit = engine.takeCommit() + extraCommit
-        var preedit = engine.snapshot.preedit
-        if !engine.english, engine.moduleBuffer == nil {
-            if engine.inputMode == .pinyin { preedit = SyllableBreaks.pinyin(preedit) }
-            if engine.inputMode == .zhuyin { preedit = SyllableBreaks.zhuyin(preedit) }
-        }
-        let actions = compositionDelivery.actions(commit: commit, preedit: preedit)
-        if !actions.isEmpty { lastDeliveryTime = ProcessInfo.processInfo.systemUptime }
-        for action in actions {
-            switch action {
-            case .mark(let text):
-                textDocumentProxy.setMarkedText(text, selectedRange: NSRange(location: text.utf16.count, length: 0))
-            case .unmark:
-                textDocumentProxy.unmarkText()
-            case .insert(let text):
+        if !engine.snapshot.preedit.isEmpty {
+            heldPrefix += commit
+        } else {
+            let text = heldPrefix + commit
+            heldPrefix = ""
+            if !text.isEmpty {
                 textDocumentProxy.insertText(text)
+                lastDeliveryTime = ProcessInfo.processInfo.systemUptime
             }
         }
+        updateReading()
         if engine.snapshot.preedit.isEmpty, !ui.kaomojiOpen { setExpanded(false) }
     }
 
@@ -746,7 +764,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             if word { deleteWordBackward() } else { textDocumentProxy.deleteBackward() }
             if !engine.predictions.isEmpty { engine.updatePredictions(context: "") }
         } else {
-            engine.key(0xff08)
+            if !engine.deleteAtCaret() { engine.key(0xff08) }
             deliver()
         }
         updateContext()
@@ -786,55 +804,39 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     override func textDidChange(_ textInput: UITextInput?) {
         guard !delivering else { return }
         updatePaste()
-        dropStaleComposition()
         updateContext()
         refreshAppearance()
     }
 
-    override func selectionDidChange(_ textInput: UITextInput?) {
-        guard !delivering else { return }
-        dropStaleComposition()
-    }
+    // The caret moved in the host: the reading stays open, and what is
+    // chosen goes in where the caret is now.
+    override func selectionDidChange(_ textInput: UITextInput?) {}
 
-    /// The host changed the text or moved the caret under an open composition
-    /// (a tap elsewhere in the field, paste, undo, Send emptying the field).
-    /// The host has already turned the marked text into plain text, so the
-    /// reading is dropped without writing anything; otherwise the next key
-    /// would mark the whole reading again at the new caret.
-    private func dropStaleComposition() {
-        guard compositionDelivery.hasMarkedText else { return }
-        let proxy = textDocumentProxy
-        let before = proxy.documentContextBeforeInput
-        if let before, compositionDelivery.agrees(withContextBefore: before) {
-            hostShowsMarkedText = true
+    /// The reading line: chosen words, then the reading and its caret. With the
+    /// caret inside a reading of letters, the letters are shown as typed.
+    private func updateReading() {
+        let composing = !engine.snapshot.preedit.isEmpty
+        guard composing || !heldPrefix.isEmpty else {
+            if !ui.reading.isEmpty { ui.reading = "" }
+            if ui.readingCaret != nil { ui.readingCaret = nil }
             return
         }
-        // The host reports its text a little late. Right after a key the
-        // context may still be the one from before it.
-        let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastDeliveryTime > 0.3 else { return }
-        let shown = compositionDelivery.shown
-        guard !shown.isEmpty else { return }
-        // A tap inside the reading can leave it in the field as plain text, the
-        // caret somewhere in it. Then the reading is let go, as it stands.
-        let head = before ?? "", tail = proxy.documentContextAfterInput ?? ""
-        let plain = shown.count > 1 && (1..<shown.count).contains { cut in
-            head.hasSuffix(shown.prefix(cut)) && tail.hasPrefix(shown.dropFirst(cut))
+        var body: String
+        var caret: Int
+        if let at = engine.caret {
+            body = engine.snapshot.input
+            caret = min(at, body.count)
+        } else {
+            body = engine.snapshot.preedit
+            if !engine.english, engine.moduleBuffer == nil {
+                if engine.inputMode == .pinyin { body = SyllableBreaks.pinyin(body) }
+                if engine.inputMode == .zhuyin { body = SyllableBreaks.zhuyin(body) }
+            }
+            caret = body.count
         }
-        if plain {
-            engine.clear()
-            compositionDelivery.reset()
-            setExpanded(false)
-            updateKeys()
-            return
-        }
-        // Otherwise the host took the marked text away (a tap on it brings up
-        // the paste menu and removes it). The reading is still open, so it is
-        // shown again at the caret instead of waiting for the next key.
-        delivering = true
-        proxy.setMarkedText(shown, selectedRange: NSRange(location: shown.utf16.count, length: 0))
-        delivering = false
-        lastDeliveryTime = now
+        let text = heldPrefix + body
+        if ui.reading != text { ui.reading = text }
+        if ui.readingCaret != heldPrefix.count + caret { ui.readingCaret = heldPrefix.count + caret }
     }
 
     private func updateContext() {
@@ -842,7 +844,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             let changedDocument = documentID.map { $0 != id } ?? false
             if changedDocument {
                 // Another text field: start with nothing open.
-                engine.clear(); compositionDelivery.reset()
+                engine.clear(); compositionDelivery.reset(); heldPrefix = ""; updateReading()
                 hostShowsMarkedText = false
                 setKaomoji(false)
                 setExpanded(false)
@@ -918,7 +920,7 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
     override func viewWillDisappear(_ animated: Bool) {
         keysView.cancelAllTouches()
         if let id = MPKeyboardDocumentIdentifier(textDocumentProxy), documentID == id { engine.finishComposition(); deliver() }
-        else { engine.clear(); compositionDelivery.reset() }
+        else { engine.clear(); compositionDelivery.reset(); heldPrefix = ""; updateReading() }
         setKaomoji(false)
         setExpanded(false)
         // The keyboard comes back on letters, as the system keyboard does,

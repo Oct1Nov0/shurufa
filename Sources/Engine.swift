@@ -167,6 +167,8 @@ final class Engine: ObservableObject {
     var moduleEnglishMode: Bool?
     var candidateOrder: [Int] = []
     var pendingChoices: [(reading: String, text: String)] = []
+    /// Where the next letter goes in the reading (`snapshot.input`); nil is the end.
+    @Published var caret: Int?
     @Published var browsing = false
     @Published var phrasesOnly = false
     @Published var browseCount = 0
@@ -375,6 +377,7 @@ final class Engine: ObservableObject {
         snapshot = backend.snapshot()
         let newCommit = snapshot.commit
         snapshot.commit = pendingCommit + newCommit
+        if let at = caret, at >= snapshot.input.count || snapshot.preedit.isEmpty { caret = nil }
         if !newCommit.isEmpty {
             if pendingChoices.isEmpty { learningTail = nil }
             learn(pendingChoices)
@@ -433,6 +436,41 @@ final class Engine: ObservableObject {
         if predictions != next { predictions = next }
     }
     func takeCommit() -> String { let text = snapshot.commit; snapshot.commit = ""; return text }
+    /// A reading of letters is open and can be edited inside (pinyin, Japanese).
+    var canEditReading: Bool {
+        backend != nil && moduleBuffer == nil && !english && (inputMode == .pinyin || inputMode == .japanese)
+            && !snapshot.input.isEmpty && !snapshot.preedit.isEmpty
+    }
+    func moveCaret(by offset: Int) {
+        guard canEditReading else { return }
+        let count = snapshot.input.count
+        let at = max(0, min(count, (caret ?? count) + offset))
+        caret = at >= count ? nil : at
+    }
+    /// Puts a letter at the caret. False when the caret is at the end (type as usual).
+    func insertAtCaret(_ code: Int32) -> Bool {
+        guard canEditReading, let at = caret, let scalar = UnicodeScalar(UInt32(code)) else { return false }
+        var letters = Array(snapshot.input)
+        let index = min(at, letters.count)
+        letters.insert(Character(scalar), at: index)
+        replaceReading(String(letters), caret: index + 1)
+        return true
+    }
+    /// Deletes the letter before the caret. False when the caret is at the end.
+    func deleteAtCaret() -> Bool {
+        guard canEditReading, let at = caret else { return false }
+        guard at > 0 else { return true }
+        var letters = Array(snapshot.input)
+        letters.remove(at: min(at, letters.count) - 1)
+        replaceReading(String(letters), caret: at - 1)
+        return true
+    }
+    private func replaceReading(_ input: String, caret at: Int) {
+        guard let backend else { return }
+        backend.replaceInput(input)
+        refresh()
+        caret = at >= snapshot.input.count ? nil : at
+    }
     func clear() {
         moduleBuffer = nil
         if let previous = moduleEnglishMode { english = previous; moduleEnglishMode = nil }
@@ -442,6 +480,7 @@ final class Engine: ObservableObject {
         predictionContext = ""; predictionSymbols = nil
         candidateOrder = []
         pendingChoices = []
+        caret = nil
         browsing = false; pool = []
     }
     func modeChanged() {
