@@ -6,6 +6,10 @@
 
 - 拼音词频混合了[白霜拼音](https://github.com/gaboolic/rime-frost)（GPL-3.0）的字频和词频，并补入它收录而原词库没有的常用词和短语。整句时词与词的搭配也混入了它的语法模型（zh-moqi.gram）。
 
+## 自定义词
+
+编辑 [`iOS/Keyboard/UserWords.tsv`](iOS/Keyboard/UserWords.tsv)，每行写「字母、Tab、词」，字母可以是首字母或全拼。提交后会自动编译，装上新的 ipa 即生效。
+
 ## 编译
 
 推送到 `main` 分支后，GitHub Actions 会在 `xcode-27` 镜像上编译，产物是未签名的 `ZhJaKeyboard.ipa`，在 Actions 页面对应那次运行的 Artifacts 里下载。也可以在 Actions 页面手动点 Run workflow。

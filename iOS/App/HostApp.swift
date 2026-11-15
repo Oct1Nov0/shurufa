@@ -26,9 +26,6 @@ struct HomeView: View {
                         Text("\(index + 1). \(step)")
                     }
                 }
-                Section("词库") {
-                    NavigationLink("自定义词库") { DictionaryView() }
-                }
                 Section("试打") {
                     TextEditor(text: $text)
                         .frame(minHeight: 160)

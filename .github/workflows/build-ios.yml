@@ -52,10 +52,7 @@ jobs:
         run: |
           APP=.build/iOS/Build/Products/Release-iphoneos/ZhJaKeyboard.app
           test -d "$APP/PlugIns/ZhJaKeyboardExtension.appex"
-          # Ad hoc signatures that carry the app group; Sideloadly re-signs with them.
-          codesign -f -s - --entitlements iOS/AppGroup.entitlements "$APP/PlugIns/ZhJaKeyboardExtension.appex"
-          codesign -f -s - --entitlements iOS/AppGroup.entitlements "$APP"
-          codesign -d --entitlements - "$APP/PlugIns/ZhJaKeyboardExtension.appex"
+          test -f "$APP/PlugIns/ZhJaKeyboardExtension.appex/UserWords.tsv"
           rm -rf .build/ipa && mkdir -p .build/ipa/Payload
           cp -R "$APP" .build/ipa/Payload/
           (cd .build/ipa && zip -qry ../ZhJaKeyboard.ipa Payload)
