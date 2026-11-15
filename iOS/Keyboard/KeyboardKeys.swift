@@ -112,8 +112,7 @@ enum KeyboardKeyBuilder {
         return letters(context, t: t)
     }
 
-    private static func bottomRow(_ context: KeyboardKeyContext, t: InterfaceText, first: KeyboardKey, second: KeyboardKey?,
-                                  longVowel: Bool = false) -> ([KeyboardKey], KeyRowSpec) {
+    private static func bottomRow(_ context: KeyboardKeyContext, t: InterfaceText, first: KeyboardKey, second: KeyboardKey?) -> ([KeyboardKey], KeyRowSpec) {
         var keys = [first]
         var units: [CGFloat] = [1.25]
         if let second { keys.append(second); units.append(1.25) }
@@ -128,12 +127,6 @@ enum KeyboardKeyBuilder {
         keys.append(KeyboardKey(action: .space, label: context.spaceTitle, style: .character, preview: false,
                                 fontSize: 16, accessibilityLabel: "空格", accessibilityValue: idle ? nil : context.spaceTitle))
         units.append(0)
-        // The Japanese long-vowel mark, beside space.
-        if longVowel {
-            keys.append(KeyboardKey(action: .text("ー"), label: "ー", style: .utility, preview: false,
-                                    accessibilityLabel: t("長音", "长音")))
-            units.append(1)
-        }
         keys.append(KeyboardKey(action: .returnKey, label: context.returnTitle,
                                 style: context.returnAccent ? .accent : .utility, preview: false,
                                 enabled: context.returnEnabled, fontSize: 16, accessibilityLabel: context.returnTitle))
@@ -174,7 +167,10 @@ enum KeyboardKeyBuilder {
             return KeyboardKey(action: .engine(Int32(c.asciiValue ?? 32)), label: text, alternates: alternates,
                                accessibilityLabel: text)
         }
-        let rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"].map { Array($0).map(letter) }
+        var rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"].map { Array($0).map(letter) }
+        // The Japanese long-vowel mark, right of l, as on Apple's Romaji keyboard.
+        let longVowel = !context.english && (context.mode == .pinyin || context.mode == .japanese)
+        if longVowel { rows[1].append(KeyboardKey(action: .text("ー"), label: "ー", accessibilityLabel: t("長音", "长音"))) }
         let shiftIcon: String = switch context.shift { case .off: "shift"; case .once: "shift.fill"; case .locked: "capslock.fill" }
         let shiftState: String = switch context.shift {
         case .off: t("關", "关")
@@ -188,12 +184,11 @@ enum KeyboardKeyBuilder {
                                  accessibilityLabel: t("刪除", "删除"))
         let symbolsKey = KeyboardKey(action: .page(1), label: context.english ? "123" : t("符號", "符号"), style: .utility,
                                      preview: false, fontSize: 16, accessibilityLabel: t("符號", "符号"))
-        let bottom = bottomRow(context, t: t, first: symbolsKey, second: toggleKey(context, t: t),
-                               longVowel: !context.english && (context.mode == .pinyin || context.mode == .japanese))
+        let bottom = bottomRow(context, t: t, first: symbolsKey, second: toggleKey(context, t: t))
         return KeyboardKeySet(kind: .letters,
                               rows: [rows[0], rows[1], [shift] + rows[2] + [delete], bottom.0],
                               specs: [KeyRowSpec(units: Array(repeating: 1, count: 10), alignment: .centered),
-                                      KeyRowSpec(units: Array(repeating: 1, count: 9), alignment: .centered),
+                                      KeyRowSpec(units: Array(repeating: 1, count: longVowel ? 10 : 9), alignment: .centered),
                                       KeyRowSpec(units: [1.32] + Array(repeating: 1, count: 7) + [1.32], alignment: .splitEdges),
                                       bottom.1],
                               referenceColumns: 10)
