@@ -505,6 +505,14 @@ final class Engine: ObservableObject {
         replaceReading(String(letters), caret: at - 1)
         return true
     }
+    /// Adds the long-vowel mark to the open reading (ge, ー, mu is ゲーム), at the caret.
+    func appendLongVowel() -> Bool {
+        guard canEditReading else { return false }
+        if caret != nil { return insertAtCaret(45) }
+        let input = snapshot.input + "-"
+        replaceReading(input, caret: input.count)
+        return true
+    }
     private func replaceReading(_ input: String, caret at: Int) {
         guard let backend else { return }
         backend.replaceInput(input)

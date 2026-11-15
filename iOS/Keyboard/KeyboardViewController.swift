@@ -580,8 +580,12 @@ final class KeyboardViewController: UIInputViewController, KeyboardKeysViewDeleg
             }
         case .text(let text):
             // Japanese: ー goes into the open reading (ge, ー, mu is ゲーム), then back to letters.
-            if alternate == nil, text == "ー", engine.inputMode == .japanese, !engine.english, !engine.snapshot.preedit.isEmpty {
-                type(45)
+            if alternate == nil, text == "ー", !engine.english, !engine.snapshot.preedit.isEmpty {
+                if engine.appendLongVowel() {
+                    deliver(); updateContext()
+                } else if engine.inputMode == .japanese {
+                    type(45)
+                }
                 page = 0
                 break
             }
